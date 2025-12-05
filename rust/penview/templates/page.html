@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <title>{{ title }}</title>
+  <link id="theme-light" rel="stylesheet" href="https://cdn.jsdelivr.net/npm/github-markdown-css/github-markdown-light.css">
+  <link id="theme-dark" rel="stylesheet" href="https://cdn.jsdelivr.net/npm/github-markdown-css/github-markdown-dark.css" disabled>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.10/dist/katex.min.css"
+    integrity="sha384-wcIxkf4k558AjM3Yz3BBFQUbk/zgIYC2R0QpeeYb+TwlBVMrlgLqwRjRtGZiK7ww" crossorigin="anonymous">
+  <script src="https://code.jquery.com/jquery-3.7.1.slim.min.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/katex@0.16.10/dist/katex.min.js"
+    integrity="sha384-hIoBPJpTUs74ddyc4bFZSM1TVlQDA60VBbJS0oA934VSz82sBx1X7kSx2ATBDIyd"
+    crossorigin="anonymous"></script>
+  <script>
+    document.addEventListener("DOMContentLoaded", function () {
+      // Adds captions to images
+      $('img').wrap('<figure>')
+      $('img').after(function () {return `<figcaption>${$(this).attr('alt')}</figcaption>`});
+
+      for (let element of document.getElementsByClassName("math")) {
+        let content = element.textContent;
+
+        katex.render(content, element, {
+          throwOnError: false
+        })
+      }
+    });
+
+    {% if use_websocket %}
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const path = urlParams.get('path');
+
+    let socket = new WebSocket(`ws://${location.host}/watch?path=${encodeURI(path)}`);
+    socket.onmessage = function (event) {
+      if (event.data) {
+        // Live preview update from Neovim - update content without reload
+        document.querySelector('.markdown-body').innerHTML = event.data;
+        hljs.highlightAll();
+        console.log("Live preview updated");
+      } else {
+        // Empty message = file saved, do full reload
+        console.log("File saved, reloading");
+        location.reload();
+      }
+    }
+
+    console.log(`Created websocket connection to listen for changes to ${path}.`);
+    {% endif %}
+  </script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/default.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script>hljs.highlightAll();</script>
+  <style>
+    .markdown-body {
+      box-sizing: border-box;
+      min-width: 200px;
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 45px;
+    }
+
+    @media (max-width: 767px) {
+      .markdown-body {
+        padding: 15px;
+      }
+    }
+
+    .footnote-definition>p {
+      display: inline;
+    }
+
+    .footnote-definition-label {
+      font-weight: bold;
+    }
+
+    /* GFM Alerts */
+    .markdown-alert-note,
+    .markdown-alert-tip,
+    .markdown-alert-important,
+    .markdown-alert-warning,
+    .markdown-alert-caution {
+      padding: 0.5rem 1rem;
+      margin-bottom: 1rem;
+      border-left: 4px solid;
+      border-radius: 4px;
+    }
+
+    .markdown-alert-note {
+      border-color: #0969da;
+      background-color: #ddf4ff;
+    }
+
+    .markdown-alert-tip {
+      border-color: #1a7f37;
+      background-color: #dafbe1;
+    }
+
+    .markdown-alert-important {
+      border-color: #8250df;
+      background-color: #fbefff;
+    }
+
+    .markdown-alert-warning {
+      border-color: #9a6700;
+      background-color: #fff8c5;
+    }
+
+    .markdown-alert-caution {
+      border-color: #cf222e;
+      background-color: #ffebe9;
+    }
+
+    /* Dark mode alert overrides */
+    [data-theme="dark"] .markdown-alert-note {
+      border-color: #58a6ff;
+      background-color: #388bfd26;
+    }
+
+    [data-theme="dark"] .markdown-alert-tip {
+      border-color: #3fb950;
+      background-color: #2ea04326;
+    }
+
+    [data-theme="dark"] .markdown-alert-important {
+      border-color: #a371f7;
+      background-color: #8957e526;
+    }
+
+    [data-theme="dark"] .markdown-alert-warning {
+      border-color: #d29922;
+      background-color: #bb800926;
+    }
+
+    [data-theme="dark"] .markdown-alert-caution {
+      border-color: #f85149;
+      background-color: #f8514926;
+    }
+
+    /* Theme toggle button */
+    .theme-toggle {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      width: 40px;
+      height: 40px;
+      border: 1px solid #d0d7de;
+      border-radius: 6px;
+      background: #f6f8fa;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      z-index: 1000;
+      transition: background-color 0.2s, border-color 0.2s;
+    }
+
+    .theme-toggle:hover {
+      background: #eaeef2;
+    }
+
+    [data-theme="dark"] .theme-toggle {
+      background: #21262d;
+      border-color: #30363d;
+    }
+
+    [data-theme="dark"] .theme-toggle:hover {
+      background: #30363d;
+    }
+
+    [data-theme="dark"] body {
+      background-color: #0d1117;
+    }
+
+  </style>
+</head>
+
+<body>
+  <button class="theme-toggle" id="theme-toggle" title="Toggle dark mode">
+    <span id="theme-icon">&#9790;</span>
+  </button>
+  <article class="markdown-body">
+    {{ body|escape("none") }}
+  </article>
+  <script>
+    (function() {
+      const toggle = document.getElementById('theme-toggle');
+      const icon = document.getElementById('theme-icon');
+      const lightCSS = document.getElementById('theme-light');
+      const darkCSS = document.getElementById('theme-dark');
+
+      function setTheme(theme) {
+        if (theme === 'dark') {
+          lightCSS.disabled = true;
+          darkCSS.disabled = false;
+          document.documentElement.setAttribute('data-theme', 'dark');
+          icon.innerHTML = '&#9788;'; // Sun
+        } else {
+          lightCSS.disabled = false;
+          darkCSS.disabled = true;
+          document.documentElement.removeAttribute('data-theme');
+          icon.innerHTML = '&#9790;'; // Moon
+        }
+        localStorage.setItem('penview-theme', theme);
+      }
+
+      // Load saved preference or default to light
+      const saved = localStorage.getItem('penview-theme') || 'light';
+      setTheme(saved);
+
+      toggle.addEventListener('click', function() {
+        const current = localStorage.getItem('penview-theme') || 'light';
+        setTheme(current === 'light' ? 'dark' : 'light');
+      });
+    })();
+  </script>
+</body>
+
+</html>

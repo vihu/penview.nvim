@@ -1,0 +1,22 @@
+[package]
+name = "penview"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1"
+askama = "0.14"
+axum = { version = "0.8", features = ["ws"] }
+base64 = "0.22.0"
+clap = { version = "4", features = ["derive"] }
+inquire = "0.9"
+mime_guess = "2"
+notify = "8"
+open = "5"
+pulldown-cmark = "0.13"
+resolve-path = "0.1.0"
+serde = { version = "1", features = ["derive"] }
+tokio = { version = "1", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = "0.3"
+url = "2"
