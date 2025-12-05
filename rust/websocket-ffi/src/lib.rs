@@ -8,7 +8,6 @@ use log4rs::{
     encode::pattern::PatternEncoder,
 };
 use nvim_oxi::{Dictionary, Object};
-use parking_lot::Mutex;
 use tokio::runtime::Runtime;
 
 mod client;

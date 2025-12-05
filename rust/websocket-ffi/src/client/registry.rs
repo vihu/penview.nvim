@@ -24,10 +24,9 @@ impl WebsocketClientRegistry {
         }
     }
 
-    pub(super) fn insert(&mut self, client: WebsocketClient) -> () {
+    pub(super) fn insert(&mut self, client: WebsocketClient) {
         let id = client.id;
         self.clients.insert(id, client);
-        ()
     }
 
     pub(super) fn get(&self, id: &Uuid) -> Option<&WebsocketClient> {

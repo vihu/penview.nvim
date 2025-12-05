@@ -58,11 +58,8 @@ fn get_clients((): ()) -> nvim_oxi::Result<Dictionary> {
 impl From<&WebsocketClient> for Dictionary {
     fn from(client: &WebsocketClient) -> Self {
         Dictionary::from_iter::<[(&str, &str); 2]>([
-            ("id", client.id.to_string().as_str().into()),
-            (
-                "connect_addr",
-                client.connect_addr.to_string().as_str().into(),
-            ),
+            ("id", client.id.to_string().as_str()),
+            ("connect_addr", client.connect_addr.to_string().as_str()),
         ])
     }
 }

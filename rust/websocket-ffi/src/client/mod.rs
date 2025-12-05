@@ -108,59 +108,50 @@ async fn start_client(
     loop {
         tokio::select! {
             message = ws_receiver.next() => {
-                match message {
-                    Some(message) => {
-                        match message {
-                            Ok(message) => {
-                                if message.is_text() {
-                                    let data = message.into_text().expect("Message received from server is not valid string");
-                                    info!("Received message: {}", data);
-                                    send_event(WebsocketClientInboundEvent::NewMessage(data));
-                                } else if message.is_binary() {
-                                    send_event(WebsocketClientInboundEvent::Error(WebsocketClientError::ReceiveMessageError("Binary data is not supported".to_string())));
-                                    error!("Binary data is not supported");
-                                } else if message.is_close() {
-                                    info!("Received close frame from server");
-                                    break;
-                                }
-                            }
-                            Err(err) => {
-                                send_event(WebsocketClientInboundEvent::Error(WebsocketClientError::ReceiveMessageError(err.to_string())));
-                                error!("Failed to receive message: {}", err);
+                if let Some(message) = message {
+                    match message {
+                        Ok(message) => {
+                            if message.is_text() {
+                                let data = message.into_text().expect("Message received from server is not valid string");
+                                info!("Received message: {}", data);
+                                send_event(WebsocketClientInboundEvent::NewMessage(data));
+                            } else if message.is_binary() {
+                                send_event(WebsocketClientInboundEvent::Error(WebsocketClientError::ReceiveMessageError("Binary data is not supported".to_string())));
+                                error!("Binary data is not supported");
+                            } else if message.is_close() {
+                                info!("Received close frame from server");
+                                break;
                             }
                         }
+                        Err(err) => {
+                            send_event(WebsocketClientInboundEvent::Error(WebsocketClientError::ReceiveMessageError(err.to_string())));
+                            error!("Failed to receive message: {}", err);
+                        }
                     }
-                    None => (),
                 }
             }
             close_event = close_connection_event_subscriber.recv() => {
-                match close_event {
-                    Some(close_event) => {
-                        match close_event {
-                            WebsocketClientCloseConnectionEvent::Graceful => {
-                                if let Err(err) = ws_sender.send(tungstenite::Message::Close(None)).await {
-                                    send_event(WebsocketClientInboundEvent::Error(WebsocketClientError::ConnectionError(err.to_string())));
-                                    error!("Failed to send close message: {}", err);
-                                }
-                            }
-                            WebsocketClientCloseConnectionEvent::Forceful => {
-                                warn!("Forcefully closing WebSocket connection");
-                                break
+                if let Some(close_event) = close_event {
+                    match close_event {
+                        WebsocketClientCloseConnectionEvent::Graceful => {
+                            if let Err(err) = ws_sender.send(tungstenite::Message::Close(None)).await {
+                                send_event(WebsocketClientInboundEvent::Error(WebsocketClientError::ConnectionError(err.to_string())));
+                                error!("Failed to send close message: {}", err);
                             }
                         }
+                        WebsocketClientCloseConnectionEvent::Forceful => {
+                            warn!("Forcefully closing WebSocket connection");
+                            break
+                        }
                     }
-                    None => (),
                 }
             }
             message = outbound_message_receiver.recv() => {
-                match message {
-                    Some(message) => {
-                        if let Err(err) = ws_sender.send(tungstenite::Message::Text(message)).await {
-                            send_event(WebsocketClientInboundEvent::Error(WebsocketClientError::ConnectionError(err.to_string())));
-                            error!("Failed to forward message to websocket: {}", err);
-                        }
+                if let Some(message) = message {
+                    if let Err(err) = ws_sender.send(tungstenite::Message::Text(message)).await {
+                        send_event(WebsocketClientInboundEvent::Error(WebsocketClientError::ConnectionError(err.to_string())));
+                        error!("Failed to forward message to websocket: {}", err);
                     }
-                    None => (),
                 }
             }
         }
@@ -183,7 +174,7 @@ impl WebsocketClient {
 
         let callbacks = WebsocketClientCallbacks::new(id)?;
 
-        let (mut inbound_event_publisher, mut inbound_event_receiver) =
+        let (inbound_event_publisher, mut inbound_event_receiver) =
             mpsc::unbounded_channel::<WebsocketClientInboundEvent>();
 
         let (outbound_message_publisher, outbound_message_receiver) =
@@ -192,7 +183,7 @@ impl WebsocketClient {
         let (close_connection_event_publisher, close_connection_event_subscriber) =
             mpsc::unbounded_channel::<WebsocketClientCloseConnectionEvent>();
 
-        let mut lua_handle = AsyncHandle::new(move || {
+        let lua_handle = AsyncHandle::new(move || {
             let event = inbound_event_receiver.blocking_recv().unwrap();
             info!("Received event - \"{:?}\"", event);
             let callbacks = callbacks.clone();
@@ -281,7 +272,6 @@ impl WebsocketClient {
                 self.send_event(WebsocketClientInboundEvent::Error(
                     WebsocketClientError::SendMessageError(err.to_string()),
                 ));
-                ()
             });
     }
 
@@ -292,7 +282,6 @@ impl WebsocketClient {
                 self.send_event(WebsocketClientInboundEvent::Error(
                     WebsocketClientError::SendMessageError(err.to_string()),
                 ));
-                ()
             });
     }
 }

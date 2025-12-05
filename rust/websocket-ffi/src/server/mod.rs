@@ -59,35 +59,29 @@ async fn start_server(
                 tokio::spawn(WebsocketServerClient::run(stream, addr, inbound_event_publisher.clone(), lua_handle.clone(), extra_response_headers.clone(), message_replay_buffer.clone(), clients.clone()));
             }
             maybe_close_connection_event = close_connection_event_subscriber.recv() => {
-                match maybe_close_connection_event {
-                    Some(close_connection_event) => {
-                        match close_connection_event {
-                            WebsocketServerCloseConnectionEvent::Graceful => {
-                                info!("Server received termination signal. Propagating to server clients");
-                                for client in clients.lock().values() {
-                                    let mut client = client.lock();
-                                    client.terminate();
-                                }
-                                break;
+                if let Some(close_connection_event) = maybe_close_connection_event {
+                    match close_connection_event {
+                        WebsocketServerCloseConnectionEvent::Graceful => {
+                            info!("Server received termination signal. Propagating to server clients");
+                            for client in clients.lock().values() {
+                                let mut client = client.lock();
+                                client.terminate();
                             }
-                            WebsocketServerCloseConnectionEvent::Forceful => {
-                                break;
-                            }
+                            break;
+                        }
+                        WebsocketServerCloseConnectionEvent::Forceful => {
+                            break;
                         }
                     }
-                    None => ()
                 }
             }
             maybe_message = outbound_broadcast_message_receiver.recv() => {
-                match maybe_message {
-                    Some(message) => {
-                        info!("Server broadcasting message: {}", message);
-                        for client in clients.lock().values() {
-                            let client = client.lock();
-                            client.send_data(message.clone());
-                        }
+                if let Some(message) = maybe_message {
+                    info!("Server broadcasting message: {}", message);
+                    for client in clients.lock().values() {
+                        let client = client.lock();
+                        client.send_data(message.clone());
                     }
-                    None => ()
                 }
             }
         }
@@ -202,7 +196,6 @@ impl WebsocketServer {
                 self.send_event(WebsocketServerInboundEvent::Error(
                     WebsocketServerError::ServerTerminationError(err.to_string()),
                 ));
-                ()
             });
     }
 
@@ -230,7 +223,6 @@ impl WebsocketServer {
                 self.send_event(WebsocketServerInboundEvent::Error(
                     WebsocketServerError::BroadcastMessageError(err.to_string()),
                 ));
-                ()
             });
     }
 }

@@ -86,9 +86,9 @@ impl WebsocketServerClient {
             id,
             addr,
             outbound_message_publisher,
-            inbound_event_publisher: inbound_event_publisher,
-            close_connection_event_publisher: close_connection_event_publisher,
-            lua_handle: lua_handle,
+            inbound_event_publisher,
+            close_connection_event_publisher,
+            lua_handle,
         };
 
         clients.lock().insert(id, Arc::new(Mutex::new(client)));
@@ -131,30 +131,24 @@ impl WebsocketServerClient {
                     }
                 }
                 maybe_close_connection_event = close_connection_event_subscriber.recv() => {
-                    match maybe_close_connection_event {
-                        Some(close_connection_event) => {
-                            match close_connection_event {
-                                WebsocketServerCloseConnectionEvent::Graceful => {
-                                    info!("Server-client {} received termination signal", id);
-                                    ws_sender.send(tungstenite::Message::Close(None)).await.unwrap();
-                                    break;
-                                }
-                                WebsocketServerCloseConnectionEvent::Forceful => {
-                                    info!("Server-client {} received forceful termination signal", id);
-                                    break;
-                                }
+                    if let Some(close_connection_event) = maybe_close_connection_event {
+                        match close_connection_event {
+                            WebsocketServerCloseConnectionEvent::Graceful => {
+                                info!("Server-client {} received termination signal", id);
+                                ws_sender.send(tungstenite::Message::Close(None)).await.unwrap();
+                                break;
+                            }
+                            WebsocketServerCloseConnectionEvent::Forceful => {
+                                info!("Server-client {} received forceful termination signal", id);
+                                break;
                             }
                         }
-                        None => (),
                     }
                 }
                 maybe_message = outbound_message_subscriber.recv() => {
-                    match maybe_message {
-                        Some(message) => {
-                            info!("Server-client {} sending message: {}", id, message);
-                            ws_sender.send(tungstenite::Message::Text(message)).await.unwrap();
-                        }
-                        None => (),
+                    if let Some(message) = maybe_message {
+                        info!("Server-client {} sending message: {}", id, message);
+                        ws_sender.send(tungstenite::Message::Text(message)).await.unwrap();
                     }
                 }
             }
@@ -180,7 +174,6 @@ impl WebsocketServerClient {
                 self.send_event(WebsocketServerInboundEvent::Error(
                     WebsocketServerError::ClientTerminationError(self.id, err.to_string()),
                 ));
-                ()
             });
     }
 
@@ -191,7 +184,6 @@ impl WebsocketServerClient {
                 self.send_event(WebsocketServerInboundEvent::Error(
                     WebsocketServerError::SendMessageError(self.id, err.to_string()),
                 ));
-                ()
             });
     }
 }
