@@ -35,6 +35,7 @@ M.timer = nil
 M.server_addr = nil
 M.server_job = nil
 M.debug = false
+M.sync_scroll = true
 
 function M.setup(opts)
 	opts = opts or {}
@@ -45,6 +46,7 @@ function M.setup(opts)
 	M.debounce_ms = opts.debounce or 100
 	M.port = opts.port or 0
 	M.debug = opts.debug or false
+	M.sync_scroll = opts.sync_scroll ~= false -- default true
 end
 
 local function log(msg)
@@ -192,15 +194,23 @@ end
 function M._send_buffer()
 	if M.client then
 		local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
-		local content = table.concat(lines, "\n")
-		M.client:try_send_data(content)
+		local total_lines = #lines
+		local cursor_line = vim.fn.line(".")
+
+		local data = vim.fn.json_encode({
+			content = table.concat(lines, "\n"),
+			cursor_line = cursor_line,
+			total_lines = total_lines,
+			sync_scroll = M.sync_scroll,
+		})
+		M.client:try_send_data(data)
 	end
 end
 
 function M._setup_autocmds()
 	local bufnr = vim.api.nvim_get_current_buf()
 
-	vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI" }, {
+	vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI", "CursorMoved", "CursorMovedI" }, {
 		buffer = bufnr,
 		callback = function()
 			if M.timer then

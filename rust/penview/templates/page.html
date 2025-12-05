@@ -34,15 +34,35 @@
 
     let socket = new WebSocket(`ws://${location.host}/watch?path=${encodeURI(path)}`);
     socket.onmessage = function (event) {
-      if (event.data) {
-        // Live preview update from Neovim - update content without reload
-        document.querySelector('.markdown-body').innerHTML = event.data;
-        hljs.highlightAll();
-        console.log("Live preview updated");
-      } else {
+      if (!event.data) {
         // Empty message = file saved, do full reload
         console.log("File saved, reloading");
         location.reload();
+        return;
+      }
+
+      // Try to parse as JSON (new format with scroll sync)
+      try {
+        const msg = JSON.parse(event.data);
+        document.querySelector('.markdown-body').innerHTML = msg.html;
+        hljs.highlightAll();
+
+        // Scroll sync if enabled
+        if (msg.sync_scroll && typeof msg.scroll_ratio === 'number') {
+          const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
+          if (maxScroll > 0) {
+            window.scrollTo({
+              top: maxScroll * msg.scroll_ratio,
+              behavior: 'smooth'
+            });
+          }
+        }
+        console.log("Live preview updated, scroll_ratio:", msg.scroll_ratio);
+      } catch (e) {
+        // Fallback for plain HTML (backwards compatibility)
+        document.querySelector('.markdown-body').innerHTML = event.data;
+        hljs.highlightAll();
+        console.log("Live preview updated (legacy format)");
       }
     }
 

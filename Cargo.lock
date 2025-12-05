@@ -1421,6 +1421,7 @@ dependencies = [
  "pulldown-cmark",
  "resolve-path",
  "serde",
+ "serde_json",
  "tokio",
  "tracing",
  "tracing-subscriber",

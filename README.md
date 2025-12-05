@@ -27,10 +27,11 @@ Real-time Markdown preview for Neovim with GitHub Flavored Markdown styling.
   ft = "markdown",
   config = function()
     require("penview").setup({
-      browser = "firefox",  -- Required: your browser command
-      -- debounce = 100,    -- Optional: ms to wait before updating (default: 100)
-      -- port = 0,          -- Optional: server port (default: random)
-      -- debug = false,     -- Optional: enable debug logging
+      browser = "firefox",      -- Required: your browser command
+      -- debounce = 100,        -- Optional: ms to wait before updating (default: 100)
+      -- port = 0,              -- Optional: server port (default: random)
+      -- debug = false,         -- Optional: enable debug logging
+      -- sync_scroll = true,    -- Optional: sync scroll with nvim (default: true)
     })
   end,
   keys = {
