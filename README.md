@@ -34,8 +34,8 @@ Real-time Markdown preview for Neovim with GitHub Flavored Markdown styling.
     })
   end,
   keys = {
-    { "<leader>po", "<cmd>PenviewStart<cr>", desc = "Preview Open" },
-    { "<leader>pc", "<cmd>PenviewStop<cr>", desc = "Preview Close" },
+    { "<leader>po", "<cmd>PenviewStart<cr>", desc = "[P]review [O]pen" },
+    { "<leader>pc", "<cmd>PenviewStop<cr>", desc = "[P]review [C]lose" },
   },
 }
 ```
