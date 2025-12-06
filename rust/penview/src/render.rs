@@ -1,7 +1,7 @@
 use crate::{page_template::PageTemplate, svg_template::SvgTemplate};
 use askama::Template;
 use base64::{Engine, engine::general_purpose};
-use pulldown_cmark::{Event, LinkType, Tag};
+use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, LinkType, Tag, TagEnd};
 use resolve_path::PathResolveExt;
 use std::path::{Path, PathBuf};
 use url::Url;
@@ -12,6 +12,15 @@ fn data_url(data: &[u8], mime_type: &str) -> String {
     let encoded = general_purpose::STANDARD.encode(data);
 
     format!("data:{};base64,{encoded}", mime_type)
+}
+
+/// Converts a byte offset to a 1-based line number
+fn byte_offset_to_line(content: &str, offset: usize) -> usize {
+    content[..offset.min(content.len())]
+        .bytes()
+        .filter(|&b| b == b'\n')
+        .count()
+        + 1
 }
 
 /// Gets the file at a specified path, loads it, and converts it to a base64-encoded data URL
@@ -68,13 +77,14 @@ pub async fn render_content(content: &str, base_path: &Path) -> anyhow::Result<S
 }
 
 /// Core markdown rendering logic shared by render_doc and render_content.
+/// Generates HTML with data-source-line attributes for scroll synchronization.
 async fn render_markdown_to_html(content: &str, base_path: &Path) -> String {
     let options = pulldown_cmark::Options::all();
     let parser = pulldown_cmark::Parser::new_ext(content, options);
-    let mut events: Vec<_> = parser.collect();
+    let mut events: Vec<_> = parser.into_offset_iter().collect();
 
-    // Handle URLs
-    for event in events.iter_mut() {
+    // Handle URLs - rewrite image and link URLs
+    for (event, _range) in events.iter_mut() {
         // Resolve image links asynchronously
         if let Event::Start(Tag::Image {
             link_type: LinkType::Inline,
@@ -126,9 +136,313 @@ async fn render_markdown_to_html(content: &str, base_path: &Path) -> String {
         }
     }
 
+    // Custom HTML generation with data-source-line attributes
     let mut body = String::new();
-    pulldown_cmark::html::push_html(&mut body, events.into_iter());
+    let mut in_code_block = false;
+
+    for (event, range) in events {
+        let line = byte_offset_to_line(content, range.start);
+
+        match event {
+            Event::Start(tag) => {
+                write_start_tag(&mut body, &tag, line, &mut in_code_block);
+            }
+            Event::End(tag_end) => {
+                write_end_tag(&mut body, &tag_end, &mut in_code_block);
+            }
+            Event::Text(text) => {
+                body.push_str(&escape_html(&text));
+            }
+            Event::Code(code) => {
+                body.push_str("<code>");
+                body.push_str(&escape_html(&code));
+                body.push_str("</code>");
+            }
+            Event::Html(html) | Event::InlineHtml(html) => {
+                body.push_str(&html);
+            }
+            Event::SoftBreak => {
+                body.push('\n');
+            }
+            Event::HardBreak => {
+                body.push_str("<br />\n");
+            }
+            Event::Rule => {
+                body.push_str(&format!("<hr data-source-line=\"{}\" />\n", line));
+            }
+            Event::FootnoteReference(name) => {
+                body.push_str(&format!(
+                    "<sup class=\"footnote-reference\"><a href=\"#{}\">{}</a></sup>",
+                    escape_html(&name),
+                    escape_html(&name)
+                ));
+            }
+            Event::TaskListMarker(checked) => {
+                if checked {
+                    body.push_str("<input type=\"checkbox\" disabled checked />");
+                } else {
+                    body.push_str("<input type=\"checkbox\" disabled />");
+                }
+            }
+            Event::InlineMath(math) => {
+                body.push_str("<span class=\"math\">");
+                body.push_str(&escape_html(&math));
+                body.push_str("</span>");
+            }
+            Event::DisplayMath(math) => {
+                body.push_str(&format!(
+                    "<div class=\"math\" data-source-line=\"{}\">",
+                    line
+                ));
+                body.push_str(&escape_html(&math));
+                body.push_str("</div>\n");
+            }
+        }
+    }
+
     body
+}
+
+/// Escape HTML special characters
+fn escape_html(s: &str) -> String {
+    let mut result = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '&' => result.push_str("&amp;"),
+            '<' => result.push_str("&lt;"),
+            '>' => result.push_str("&gt;"),
+            '"' => result.push_str("&quot;"),
+            '\'' => result.push_str("&#x27;"),
+            _ => result.push(c),
+        }
+    }
+    result
+}
+
+/// Convert HeadingLevel to u8
+fn heading_level_to_u8(level: HeadingLevel) -> u8 {
+    match level {
+        HeadingLevel::H1 => 1,
+        HeadingLevel::H2 => 2,
+        HeadingLevel::H3 => 3,
+        HeadingLevel::H4 => 4,
+        HeadingLevel::H5 => 5,
+        HeadingLevel::H6 => 6,
+    }
+}
+
+/// Write opening tag with data-source-line attribute for block elements
+fn write_start_tag(output: &mut String, tag: &Tag, line: usize, in_code_block: &mut bool) {
+    match tag {
+        Tag::Paragraph => {
+            output.push_str(&format!("<p data-source-line=\"{}\">", line));
+        }
+        Tag::Heading { level, id, .. } => {
+            let level_num = heading_level_to_u8(*level);
+            if let Some(id) = id {
+                output.push_str(&format!(
+                    "<h{} id=\"{}\" data-source-line=\"{}\">",
+                    level_num,
+                    escape_html(id),
+                    line
+                ));
+            } else {
+                output.push_str(&format!("<h{} data-source-line=\"{}\">", level_num, line));
+            }
+        }
+        Tag::BlockQuote(_) => {
+            output.push_str(&format!("<blockquote data-source-line=\"{}\">\n", line));
+        }
+        Tag::CodeBlock(kind) => {
+            *in_code_block = true;
+            match kind {
+                CodeBlockKind::Fenced(info) => {
+                    let lang = info.split_whitespace().next().unwrap_or("");
+                    if lang.is_empty() {
+                        output.push_str(&format!("<pre data-source-line=\"{}\"><code>", line));
+                    } else {
+                        output.push_str(&format!(
+                            "<pre data-source-line=\"{}\"><code class=\"language-{}\">",
+                            line,
+                            escape_html(lang)
+                        ));
+                    }
+                }
+                CodeBlockKind::Indented => {
+                    output.push_str(&format!("<pre data-source-line=\"{}\"><code>", line));
+                }
+            }
+        }
+        Tag::List(start) => {
+            if let Some(start_num) = start {
+                if *start_num == 1 {
+                    output.push_str(&format!("<ol data-source-line=\"{}\">\n", line));
+                } else {
+                    output.push_str(&format!(
+                        "<ol start=\"{}\" data-source-line=\"{}\">\n",
+                        start_num, line
+                    ));
+                }
+            } else {
+                output.push_str(&format!("<ul data-source-line=\"{}\">\n", line));
+            }
+        }
+        Tag::Item => {
+            output.push_str(&format!("<li data-source-line=\"{}\">", line));
+        }
+        Tag::FootnoteDefinition(name) => {
+            output.push_str(&format!(
+                "<div class=\"footnote-definition\" id=\"{}\" data-source-line=\"{}\">\n<span class=\"footnote-definition-label\">{}</span>\n",
+                escape_html(name),
+                line,
+                escape_html(name)
+            ));
+        }
+        Tag::Table(alignments) => {
+            output.push_str(&format!("<table data-source-line=\"{}\">\n", line));
+            // Store alignments for later use (we'd need state, but for now just ignore)
+            let _ = alignments;
+        }
+        Tag::TableHead => {
+            output.push_str("<thead>\n<tr>\n");
+        }
+        Tag::TableRow => {
+            output.push_str("<tr>\n");
+        }
+        Tag::TableCell => {
+            output.push_str("<td>");
+        }
+        Tag::Emphasis => {
+            output.push_str("<em>");
+        }
+        Tag::Strong => {
+            output.push_str("<strong>");
+        }
+        Tag::Strikethrough => {
+            output.push_str("<del>");
+        }
+        Tag::Superscript => {
+            output.push_str("<sup>");
+        }
+        Tag::Subscript => {
+            output.push_str("<sub>");
+        }
+        Tag::Link {
+            dest_url, title, ..
+        } => {
+            output.push_str("<a href=\"");
+            output.push_str(&escape_html(dest_url));
+            output.push('"');
+            if !title.is_empty() {
+                output.push_str(" title=\"");
+                output.push_str(&escape_html(title));
+                output.push('"');
+            }
+            output.push('>');
+        }
+        Tag::Image { dest_url, .. } => {
+            output.push_str("<img src=\"");
+            output.push_str(&escape_html(dest_url));
+            output.push_str("\" alt=\"");
+            // Alt text will be filled by Text event, closing tag adds title and />
+        }
+        Tag::MetadataBlock(_) => {
+            // Skip metadata blocks
+        }
+        Tag::DefinitionList => {
+            output.push_str(&format!("<dl data-source-line=\"{}\">\n", line));
+        }
+        Tag::DefinitionListTitle => {
+            output.push_str(&format!("<dt data-source-line=\"{}\">", line));
+        }
+        Tag::DefinitionListDefinition => {
+            output.push_str(&format!("<dd data-source-line=\"{}\">", line));
+        }
+        Tag::HtmlBlock => {
+            // HTML blocks are passed through as-is
+        }
+    }
+}
+
+/// Write closing tag
+fn write_end_tag(output: &mut String, tag_end: &TagEnd, in_code_block: &mut bool) {
+    match tag_end {
+        TagEnd::Paragraph => {
+            output.push_str("</p>\n");
+        }
+        TagEnd::Heading(level) => {
+            let level_num = heading_level_to_u8(*level);
+            output.push_str(&format!("</h{}>\n", level_num));
+        }
+        TagEnd::BlockQuote(_) => {
+            output.push_str("</blockquote>\n");
+        }
+        TagEnd::CodeBlock => {
+            *in_code_block = false;
+            output.push_str("</code></pre>\n");
+        }
+        TagEnd::List(ordered) => {
+            if *ordered {
+                output.push_str("</ol>\n");
+            } else {
+                output.push_str("</ul>\n");
+            }
+        }
+        TagEnd::Item => {
+            output.push_str("</li>\n");
+        }
+        TagEnd::FootnoteDefinition => {
+            output.push_str("</div>\n");
+        }
+        TagEnd::Table => {
+            output.push_str("</tbody>\n</table>\n");
+        }
+        TagEnd::TableHead => {
+            output.push_str("</tr>\n</thead>\n<tbody>\n");
+        }
+        TagEnd::TableRow => {
+            output.push_str("</tr>\n");
+        }
+        TagEnd::TableCell => {
+            output.push_str("</td>\n");
+        }
+        TagEnd::Emphasis => {
+            output.push_str("</em>");
+        }
+        TagEnd::Strong => {
+            output.push_str("</strong>");
+        }
+        TagEnd::Strikethrough => {
+            output.push_str("</del>");
+        }
+        TagEnd::Superscript => {
+            output.push_str("</sup>");
+        }
+        TagEnd::Subscript => {
+            output.push_str("</sub>");
+        }
+        TagEnd::Link => {
+            output.push_str("</a>");
+        }
+        TagEnd::Image => {
+            output.push_str("\" />");
+        }
+        TagEnd::MetadataBlock(_) => {
+            // Skip metadata blocks
+        }
+        TagEnd::DefinitionList => {
+            output.push_str("</dl>\n");
+        }
+        TagEnd::DefinitionListTitle => {
+            output.push_str("</dt>\n");
+        }
+        TagEnd::DefinitionListDefinition => {
+            output.push_str("</dd>\n");
+        }
+        TagEnd::HtmlBlock => {
+            // HTML blocks are passed through as-is
+        }
+    }
 }
 
 /// Returns a relative path to a file if it is under the working directory

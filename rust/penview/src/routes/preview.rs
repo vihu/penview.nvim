@@ -17,12 +17,11 @@ pub struct PreviewParams {
     path: PathBuf,
 }
 
-/// Input message from Neovim containing buffer content and scroll position.
+/// Input message from Neovim containing buffer content and cursor position.
 #[derive(Debug, Deserialize)]
 struct PreviewInput {
     content: String,
     cursor_line: usize,
-    total_lines: usize,
     #[serde(default = "default_sync_scroll")]
     sync_scroll: bool,
 }
@@ -31,11 +30,11 @@ fn default_sync_scroll() -> bool {
     true
 }
 
-/// Output message to browser containing rendered HTML and scroll ratio.
+/// Output message to browser containing rendered HTML and cursor line.
 #[derive(Debug, Serialize)]
 struct PreviewOutput {
     html: String,
-    scroll_ratio: f64,
+    cursor_line: usize,
     sync_scroll: bool,
 }
 
@@ -56,32 +55,20 @@ async fn handle_preview(mut socket: WebSocket, path: PathBuf, state: AppState) {
     while let Some(Ok(msg)) = socket.recv().await {
         if let Message::Text(text) = msg {
             // Try to parse as JSON first, fall back to plain text for backwards compatibility
-            let (content, cursor_line, total_lines, sync_scroll) =
+            let (content, cursor_line, sync_scroll) =
                 match serde_json::from_str::<PreviewInput>(&text) {
-                    Ok(input) => (
-                        input.content,
-                        input.cursor_line,
-                        input.total_lines,
-                        input.sync_scroll,
-                    ),
+                    Ok(input) => (input.content, input.cursor_line, input.sync_scroll),
                     Err(_) => {
                         // Backwards compatibility: plain markdown text
-                        let lines = text.lines().count();
-                        (text.to_string(), 1, lines.max(1), false)
+                        (text.to_string(), 1, false)
                     }
                 };
 
             match render_content(&content, &path).await {
                 Ok(html) => {
-                    let scroll_ratio = if total_lines > 0 {
-                        (cursor_line as f64 / total_lines as f64).clamp(0.0, 1.0)
-                    } else {
-                        0.0
-                    };
-
                     let output = PreviewOutput {
                         html,
-                        scroll_ratio,
+                        cursor_line,
                         sync_scroll,
                     };
 

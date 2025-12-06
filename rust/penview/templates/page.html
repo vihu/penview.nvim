@@ -32,6 +32,31 @@
     const urlParams = new URLSearchParams(window.location.search);
     const path = urlParams.get('path');
 
+    // Scroll to the element closest to the target source line
+    function scrollToLine(targetLine) {
+      const elements = document.querySelectorAll('[data-source-line]');
+      if (elements.length === 0) return;
+
+      let bestElement = null;
+      let bestLine = 0;
+
+      // Find element with closest line <= targetLine
+      for (const el of elements) {
+        const line = parseInt(el.getAttribute('data-source-line'), 10);
+        if (line <= targetLine && line > bestLine) {
+          bestLine = line;
+          bestElement = el;
+        }
+      }
+
+      // If no element found before target, use the first element
+      if (!bestElement) {
+        bestElement = elements[0];
+      }
+
+      bestElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
     let socket = new WebSocket(`ws://${location.host}/watch?path=${encodeURI(path)}`);
     socket.onmessage = function (event) {
       if (!event.data) {
@@ -47,17 +72,11 @@
         document.querySelector('.markdown-body').innerHTML = msg.html;
         hljs.highlightAll();
 
-        // Scroll sync if enabled
-        if (msg.sync_scroll && typeof msg.scroll_ratio === 'number') {
-          const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
-          if (maxScroll > 0) {
-            window.scrollTo({
-              top: maxScroll * msg.scroll_ratio,
-              behavior: 'smooth'
-            });
-          }
+        // Scroll sync if enabled - use line-to-element mapping
+        if (msg.sync_scroll && typeof msg.cursor_line === 'number') {
+          scrollToLine(msg.cursor_line);
         }
-        console.log("Live preview updated, scroll_ratio:", msg.scroll_ratio);
+        console.log("Live preview updated, cursor_line:", msg.cursor_line);
       } catch (e) {
         // Fallback for plain HTML (backwards compatibility)
         document.querySelector('.markdown-body').innerHTML = event.data;
