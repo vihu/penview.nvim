@@ -9,6 +9,7 @@ Real-time Markdown preview for Neovim with GitHub Flavored Markdown styling.
 - Light/dark theme toggle
 - Syntax highlighting for code blocks
 - KaTeX math support
+- Mermaid diagram support
 - Self-contained HTML export
 
 ## Requirements
