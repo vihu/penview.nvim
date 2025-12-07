@@ -1,7 +1,7 @@
 use crate::{page_template::PageTemplate, svg_template::SvgTemplate};
 use askama::Template;
 use base64::{Engine, engine::general_purpose};
-use pulldown_cmark::{Event, LinkType, Tag};
+use pulldown_cmark::{CodeBlockKind, CowStr, Event, LinkType, Tag, TagEnd};
 use resolve_path::PathResolveExt;
 use std::path::{Path, PathBuf};
 use url::Url;
@@ -73,8 +73,29 @@ async fn render_markdown_to_html(content: &str, base_path: &Path) -> String {
     let parser = pulldown_cmark::Parser::new_ext(content, options);
     let mut events: Vec<_> = parser.collect();
 
-    // Handle URLs
+    // Track mermaid code block state
+    let mut in_mermaid_block = false;
+
+    // Handle URLs and mermaid blocks
     for event in events.iter_mut() {
+        // Handle mermaid code blocks - replace <pre><code> with <pre class="mermaid">
+        match event {
+            Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(lang)))
+                if lang.as_ref() == "mermaid" =>
+            {
+                in_mermaid_block = true;
+                *event = Event::Html(CowStr::from("<pre class=\"mermaid\">"));
+            }
+            Event::Text(text) if in_mermaid_block => {
+                // Emit as raw HTML to prevent escaping (mermaid needs raw text)
+                *event = Event::Html(text.clone());
+            }
+            Event::End(TagEnd::CodeBlock) if in_mermaid_block => {
+                in_mermaid_block = false;
+                *event = Event::Html(CowStr::from("</pre>"));
+            }
+            _ => {}
+        }
         // Resolve image links asynchronously
         if let Event::Start(Tag::Image {
             link_type: LinkType::Inline,

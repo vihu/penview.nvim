@@ -12,6 +12,23 @@
   <script src="https://cdn.jsdelivr.net/npm/katex@0.16.10/dist/katex.min.js"
     integrity="sha384-hIoBPJpTUs74ddyc4bFZSM1TVlQDA60VBbJS0oA934VSz82sBx1X7kSx2ATBDIyd"
     crossorigin="anonymous"></script>
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+
+    function getMermaidTheme() {
+      return document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'default';
+    }
+
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: getMermaidTheme()
+    });
+
+    window.mermaidRender = async () => {
+      mermaid.initialize({ startOnLoad: false, theme: getMermaidTheme() });
+      await mermaid.run({ querySelector: '.mermaid' });
+    };
+  </script>
   <script>
     document.addEventListener("DOMContentLoaded", function () {
       // Adds captions to images
@@ -46,6 +63,7 @@
         const msg = JSON.parse(event.data);
         document.querySelector('.markdown-body').innerHTML = msg.html;
         hljs.highlightAll();
+        window.mermaidRender?.();
 
         // Scroll sync if enabled
         if (msg.sync_scroll && typeof msg.scroll_ratio === 'number') {
@@ -62,6 +80,7 @@
         // Fallback for plain HTML (backwards compatibility)
         document.querySelector('.markdown-body').innerHTML = event.data;
         hljs.highlightAll();
+        window.mermaidRender?.();
         console.log("Live preview updated (legacy format)");
       }
     }
@@ -224,6 +243,7 @@
           icon.innerHTML = '&#9790;'; // Moon
         }
         localStorage.setItem('penview-theme', theme);
+        window.mermaidRender?.();
       }
 
       // Load saved preference or default to light
