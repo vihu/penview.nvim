@@ -86,6 +86,10 @@ async fn render_markdown_to_html(content: &str, base_path: &Path) -> String {
                 in_mermaid_block = true;
                 *event = Event::Html(CowStr::from("<pre class=\"mermaid\">"));
             }
+            Event::Text(text) if in_mermaid_block => {
+                // Emit as raw HTML to prevent escaping (mermaid needs raw text)
+                *event = Event::Html(text.clone());
+            }
             Event::End(TagEnd::CodeBlock) if in_mermaid_block => {
                 in_mermaid_block = false;
                 *event = Event::Html(CowStr::from("</pre>"));
