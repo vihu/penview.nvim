@@ -36,17 +36,34 @@ M.server_addr = nil
 M.server_job = nil
 M.debug = false
 M.sync_scroll = true
+M.headless = false
 
 function M.setup(opts)
 	opts = opts or {}
-	if not opts.browser then
-		error("[penview] 'browser' is required in setup(). Example: require('penview').setup({ browser = 'firefox' })")
-	end
-	M.browser = opts.browser
+	M.headless = opts.headless or false
 	M.debounce_ms = opts.debounce or 100
 	M.port = opts.port or 0
 	M.debug = opts.debug or false
 	M.sync_scroll = opts.sync_scroll ~= false -- default true
+
+	if M.headless then
+		-- Headless mode requires a port
+		if not opts.port or opts.port == 0 then
+			error(
+				"[penview] headless mode requires a port number\nExample: require('penview').setup({ headless = true, port = 9876 })"
+			)
+		end
+		-- Browser is optional in headless mode
+		M.browser = opts.browser
+	else
+		-- Non-headless mode requires browser
+		if not opts.browser then
+			error(
+				"[penview] 'browser' is required in setup(). Example: require('penview').setup({ browser = 'firefox' })"
+			)
+		end
+		M.browser = opts.browser
+	end
 end
 
 local function log(msg)
@@ -62,7 +79,7 @@ function M.start()
 		return
 	end
 
-	if not M.browser then
+	if not M.headless and not M.browser then
 		print("[penview] Browser not configured. Call setup() first with browser option.")
 		return
 	end
@@ -75,10 +92,21 @@ function M.start()
 
 	log("Binary: " .. binary)
 	log("Path: " .. path)
-	log("Browser: " .. M.browser)
+	log("Headless: " .. tostring(M.headless))
+	if M.browser then
+		log("Browser: " .. M.browser)
+	end
 
 	-- Build command
-	local cmd = { binary, "serve", "-q", "-p", tostring(M.port), "--open", path, "--browser", M.browser }
+	-- Note: file path is passed via WebSocket URL in _connect(), not as CLI arg
+	local cmd
+	if M.headless then
+		-- Headless mode: bind to 0.0.0.0, no browser open
+		cmd = { binary, "serve", "-q", "-p", tostring(M.port), "-a", "0.0.0.0" }
+	else
+		-- Normal mode: --open tells server to launch browser with file path
+		cmd = { binary, "serve", "-q", "-p", tostring(M.port), "--open", path, "--browser", M.browser }
+	end
 
 	log("Command: " .. table.concat(cmd, " "))
 
@@ -93,7 +121,12 @@ function M.start()
 			for _, line in ipairs(data) do
 				if line and line ~= "" then
 					M.server_addr = line:gsub("%s+", "")
-					print("[penview] Server started at " .. M.server_addr)
+					if M.headless then
+						print("[penview] [WARN] Server exposed to network (bound to 0.0.0.0)")
+						print("[penview] Server running at http://" .. M.server_addr)
+					else
+						print("[penview] Server started at " .. M.server_addr)
+					end
 					vim.schedule(function()
 						M._connect(file_path)
 					end)
@@ -161,21 +194,21 @@ function M._connect(path)
 
 	M.client = WebsocketClient.new({
 		connect_addr = ws_url,
-		on_connect = function(self)
+		on_connect = function(_)
 			print("[penview] Connected to preview")
 			vim.schedule(function()
 				M._send_buffer()
 				M._setup_autocmds()
 			end)
 		end,
-		on_disconnect = function(self)
+		on_disconnect = function(_)
 			print("[penview] Disconnected")
 			M.client = nil
 		end,
-		on_message = function(self, msg)
+		on_message = function(_, msg)
 			log("Received message: " .. tostring(msg))
 		end,
-		on_error = function(self, err)
+		on_error = function(_, err)
 			print("[penview] WebSocket error: " .. vim.inspect(err))
 		end,
 	})

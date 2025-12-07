@@ -11,6 +11,7 @@ Real-time Markdown preview for Neovim with GitHub Flavored Markdown styling.
 - KaTeX math support
 - Mermaid diagram support
 - Self-contained HTML export
+- Headless mode support
 
 ## Requirements
 
@@ -49,6 +50,36 @@ Real-time Markdown preview for Neovim with GitHub Flavored Markdown styling.
 3. Browser opens with live preview
 4. Edit your markdown - preview updates in real-time
 5. Run `:PenviewStop` or press `<leader>pc` to stop
+
+## Headless Mode
+
+For neovim running on Linux servers without a browser, use headless mode to expose the HTTP server for remote access.
+
+### Setup
+
+On the remote server, configure penview with headless mode:
+
+```lua
+require("penview").setup({
+  headless = true,  -- Enable headless mode (binds to 0.0.0.0), required.
+  port = 9876,      -- Port for remote access, required.
+})
+```
+
+### Workflow
+
+1. **Remote server**: Open a markdown file and run `:PenviewStart`
+2. **Local machine**: Create an SSH tunnel to the remote server:
+   ```bash
+   ssh -L 9876:localhost:9876 remote-server
+   ```
+3. **Local browser**: Open the preview URL:
+   ```
+   http://localhost:9876?path=/path/to/file.md
+   ```
+   (use the absolute path to the file on the remote server)
+
+The preview updates in real-time as you edit the file on the remote server.
 
 ## Commands
 
