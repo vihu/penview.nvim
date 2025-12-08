@@ -4,6 +4,17 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to build (e.g., 0.1.0)"
+        required: true
+        type: string
+      dry_run:
+        description: "Dry run (build but don't create release)"
+        required: false
+        type: boolean
+        default: true
 
 env:
   CARGO_TERM_COLOR: always
@@ -37,14 +48,26 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Verify tag matches Cargo.toml version
+      - name: Determine version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "VERSION=v${{ inputs.version }}" >> $GITHUB_OUTPUT
+            echo "Using manual version: v${{ inputs.version }}"
+          else
+            echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+            echo "Using tag version: ${GITHUB_REF#refs/tags/}"
+          fi
+
+      - name: Verify version matches Cargo.toml
         run: |
           CARGO_VERSION=$(grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
-          TAG_VERSION=${GITHUB_REF#refs/tags/v}
+          BUILD_VERSION=${{ steps.version.outputs.VERSION }}
+          BUILD_VERSION=${BUILD_VERSION#v}  # Strip v prefix
           echo "Cargo.toml version: $CARGO_VERSION"
-          echo "Git tag version: $TAG_VERSION"
-          if [ "$CARGO_VERSION" != "$TAG_VERSION" ]; then
-            echo "::error::Version mismatch! Cargo.toml has $CARGO_VERSION but tag is v$TAG_VERSION"
+          echo "Build version: $BUILD_VERSION"
+          if [ "$CARGO_VERSION" != "$BUILD_VERSION" ]; then
+            echo "::error::Version mismatch! Cargo.toml has $CARGO_VERSION but building v$BUILD_VERSION"
             exit 1
           fi
           echo "Version check passed"
@@ -73,10 +96,6 @@ jobs:
       - name: Build release
         run: cargo build --release --target ${{ matrix.target }}
 
-      - name: Get version from tag
-        id: version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-
       - name: Create artifact directory
         run: |
           mkdir -p artifact/penview-${{ steps.version.outputs.VERSION }}-${{ matrix.artifact_name }}
@@ -102,6 +121,7 @@ jobs:
     name: Create Release
     needs: build
     runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'push' || !inputs.dry_run }}
     permissions:
       contents: write
 
@@ -109,9 +129,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Get version from tag
+      - name: Determine version
         id: version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "VERSION=v${{ inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          fi
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
