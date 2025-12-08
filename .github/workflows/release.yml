@@ -1,0 +1,167 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to build (e.g., 0.1.0)"
+        required: true
+        type: string
+      dry_run:
+        description: "Dry run (build but don't create release)"
+        required: false
+        type: boolean
+        default: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build ${{ matrix.artifact_name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact_name: linux-x86_64
+            ffi_ext: so
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            artifact_name: linux-aarch64
+            ffi_ext: so
+          - os: macos-13
+            target: x86_64-apple-darwin
+            artifact_name: macos-x86_64
+            ffi_ext: dylib
+          - os: macos-14
+            target: aarch64-apple-darwin
+            artifact_name: macos-aarch64
+            ffi_ext: dylib
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Determine version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "VERSION=v${{ inputs.version }}" >> $GITHUB_OUTPUT
+            echo "Using manual version: v${{ inputs.version }}"
+          else
+            echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+            echo "Using tag version: ${GITHUB_REF#refs/tags/}"
+          fi
+
+      - name: Verify version matches Cargo.toml
+        run: |
+          CARGO_VERSION=$(grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
+          BUILD_VERSION=${{ steps.version.outputs.VERSION }}
+          BUILD_VERSION=${BUILD_VERSION#v}  # Strip v prefix
+          echo "Cargo.toml version: $CARGO_VERSION"
+          echo "Build version: $BUILD_VERSION"
+          if [ "$CARGO_VERSION" != "$BUILD_VERSION" ]; then
+            echo "::error::Version mismatch! Cargo.toml has $CARGO_VERSION but building v$BUILD_VERSION"
+            exit 1
+          fi
+          echo "Version check passed"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Install dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libluajit-5.1-dev libclang-dev pkg-config
+
+      - name: Install dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install luajit pkg-config
+
+      - name: Build release
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Create artifact directory
+        run: |
+          mkdir -p artifact/penview-${{ steps.version.outputs.VERSION }}-${{ matrix.artifact_name }}
+
+      - name: Copy binaries to artifact directory
+        run: |
+          cp target/${{ matrix.target }}/release/penview artifact/penview-${{ steps.version.outputs.VERSION }}-${{ matrix.artifact_name }}/
+          cp target/${{ matrix.target }}/release/libwebsocket_ffi.${{ matrix.ffi_ext }} artifact/penview-${{ steps.version.outputs.VERSION }}-${{ matrix.artifact_name }}/websocket_ffi.so
+          echo "${{ steps.version.outputs.VERSION }}" > artifact/penview-${{ steps.version.outputs.VERSION }}-${{ matrix.artifact_name }}/VERSION
+
+      - name: Create tarball
+        run: |
+          cd artifact
+          tar -czvf penview-${{ steps.version.outputs.VERSION }}-${{ matrix.artifact_name }}.tar.gz penview-${{ steps.version.outputs.VERSION }}-${{ matrix.artifact_name }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: penview-${{ steps.version.outputs.VERSION }}-${{ matrix.artifact_name }}
+          path: artifact/penview-${{ steps.version.outputs.VERSION }}-${{ matrix.artifact_name }}.tar.gz
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'push' || !inputs.dry_run }}
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Determine version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "VERSION=v${{ inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Collect tarballs
+        run: |
+          mkdir -p release
+          find artifacts -name "*.tar.gz" -exec cp {} release/ \;
+          ls -la release/
+
+      - name: Generate checksums
+        run: |
+          cd release
+          sha256sum *.tar.gz > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: penview ${{ steps.version.outputs.VERSION }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: |
+            release/*.tar.gz
+            release/SHA256SUMS.txt

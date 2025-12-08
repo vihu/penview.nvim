@@ -3,8 +3,8 @@ use std::collections::HashMap;
 use nvim_oxi::{Dictionary, Function, Object};
 use uuid::Uuid;
 
-use super::WebsocketClient;
 use super::WEBSOCKET_CLIENT_REGISTRY;
+use super::WebsocketClient;
 
 pub fn websocket_client_ffi() -> Dictionary {
     Dictionary::from_iter([

@@ -1,5 +1,3 @@
-use std::env;
-
 use lazy_static::lazy_static;
 use log::{self};
 use log4rs::{
@@ -19,8 +17,6 @@ lazy_static! {
 
 #[nvim_oxi::module]
 fn websocket_ffi() -> nvim_oxi::Result<Dictionary> {
-    env::set_var("RUST_BACKTRACE", "1");
-
     let file_appender = FileAppender::builder()
         // Pattern: https://docs.rs/log4rs/*/log4rs/encode/pattern/index.html
         .encoder(Box::new(PatternEncoder::new(

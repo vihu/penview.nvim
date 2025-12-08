@@ -1,27 +1,26 @@
 [package]
 name = "websocket-ffi"
-version = "0.1.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
+homepage.workspace = true
+license.workspace = true
+repository.workspace = true
 
 [lib]
 crate-type = ["cdylib"]
 
 [dependencies]
-nvim-oxi = { version = "0.4.2", features = ["neovim-0-9", "libuv", "mlua"] }
-serde = "1.0.201"
-tokio = { version = "1.37.0", features = ["full"] }
-tokio-tungstenite = { version = "0.21.0", features = [] }
-lazy_static = "1.4.0"
-parking_lot = "0.12.2"
-uuid = { version = "1.8.0", features = [
-    "v4",                # Lets you generate random UUIDs
-    "fast-rng",          # Use a faster (but still sufficiently random) RNG
-    "macro-diagnostics", # Enable better diagnostics for compile-time UUIDs
-] }
-mlua = "0.9.7"
-url = "2.5.0"
-futures-util = "0.3.30"
-futures-channel = "0.3.30"
-log = "0.4.21"
-log4rs = { version = "1.3.0", features = ["file_appender"] }
-log-panics = "2.1.0"
+futures-channel.workspace = true
+futures-util.workspace = true
+log.workspace = true
+log4rs.workspace = true
+log-panics.workspace = true
+lazy_static.workspace = true
+mlua.workspace = true
+nvim-oxi.workspace = true
+parking_lot.workspace = true
+serde.workspace = true
+tokio.workspace = true
+tokio-tungstenite.workspace = true
+url.workspace = true
+uuid.workspace = true
