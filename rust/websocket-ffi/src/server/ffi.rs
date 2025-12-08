@@ -3,7 +3,7 @@ use std::{collections::HashMap, ops::Deref};
 use nvim_oxi::{Dictionary, Function, Object};
 use uuid::Uuid;
 
-use super::{WebsocketServer, WebsocketServerClient, WEBSOCKET_SERVER_REGISTRY};
+use super::{WEBSOCKET_SERVER_REGISTRY, WebsocketServer, WebsocketServerClient};
 
 pub fn websocket_server_ffi() -> Dictionary {
     Dictionary::from_iter([

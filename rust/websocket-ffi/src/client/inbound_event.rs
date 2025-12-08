@@ -1,8 +1,8 @@
 use std::error::Error;
 
 use mlua::prelude::*;
-use nvim_oxi::conversion::ToObject;
 use nvim_oxi::Object;
+use nvim_oxi::conversion::ToObject;
 
 #[derive(Clone, Debug)]
 pub enum WebsocketClientError {

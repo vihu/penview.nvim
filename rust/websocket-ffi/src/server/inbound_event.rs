@@ -1,6 +1,6 @@
 use mlua::prelude::{IntoLua, Lua, LuaResult, LuaValue};
-use nvim_oxi::conversion::ToObject;
 use nvim_oxi::Object;
+use nvim_oxi::conversion::ToObject;
 use uuid::Uuid;
 
 #[derive(Clone)]
