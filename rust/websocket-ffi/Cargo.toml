@@ -16,7 +16,6 @@ log.workspace = true
 log4rs.workspace = true
 log-panics.workspace = true
 lazy_static.workspace = true
-mlua.workspace = true
 nvim-oxi.workspace = true
 parking_lot.workspace = true
 serde.workspace = true

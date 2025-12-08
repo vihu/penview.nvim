@@ -1,21 +1,18 @@
-use std::collections::HashMap;
-use std::net::SocketAddr;
-use std::sync::Arc;
-
-use futures_util::{SinkExt, StreamExt};
-use nvim_oxi::libuv::AsyncHandle;
-use parking_lot::Mutex;
-use tokio::net::TcpStream;
-use tokio::sync::mpsc::{self, UnboundedSender};
-use uuid::Uuid;
-
-use log::{self, error, info};
-use tokio_tungstenite::tungstenite::{self};
-
 use super::{
     OutboundMessageReplayBuffer, WebsocketServerCloseConnectionEvent, WebsocketServerError,
     WebsocketServerInboundEvent,
 };
+use futures_util::{SinkExt, StreamExt};
+use log::{self, error, info};
+use nvim_oxi::libuv::AsyncHandle;
+use parking_lot::Mutex;
+use std::{collections::HashMap, net::SocketAddr, sync::Arc};
+use tokio::{
+    net::TcpStream,
+    sync::mpsc::{self, UnboundedSender},
+};
+use tokio_tungstenite::tungstenite::{self};
+use uuid::Uuid;
 
 pub struct WebsocketServerClient {
     pub id: Uuid,
@@ -105,15 +102,15 @@ impl WebsocketServerClient {
                                     match message {
                                         tungstenite::Message::Text(data) => {
                                             info!("Server-client {} received message: {}", id, data);
-                                            send_event(WebsocketServerInboundEvent::NewMessage(id, data));
+                                            send_event(WebsocketServerInboundEvent::NewMessage(id, data.to_string()));
                                         }
                                         tungstenite::Message::Binary(_data) => {
                                             info!("Server-client {} received binary data", id);
-                                            send_event(WebsocketServerInboundEvent::Error(WebsocketServerError::ReceiveMessageError(id, "Binary data handling is not supported".to_string())));
+                                            send_event(WebsocketServerInboundEvent::Error(WebsocketServerError::ReceiveMessage(id, "Binary data handling is not supported".to_string())));
                                         }
                                         tungstenite::Message::Frame(_frame) => {
                                             info!("Server-client {} received raw frame data", id);
-                                            send_event(WebsocketServerInboundEvent::Error(WebsocketServerError::ReceiveMessageError(id, "Raw frame data handling is not supported".to_string())));
+                                            send_event(WebsocketServerInboundEvent::Error(WebsocketServerError::ReceiveMessage(id, "Raw frame data handling is not supported".to_string())));
                                         }
                                         // Ping, pong, close are handled by tokio-tungstenite
                                         _ => {}
@@ -121,7 +118,7 @@ impl WebsocketServerClient {
                                 },
                                 Err(err) => {
                                     error!("Server-client {} received error: {}", id, err);
-                                    send_event(WebsocketServerInboundEvent::Error(WebsocketServerError::ReceiveMessageError(id, err.to_string())));
+                                    send_event(WebsocketServerInboundEvent::Error(WebsocketServerError::ReceiveMessage(id, err.to_string())));
                                 }
                             }
                         }
@@ -131,24 +128,16 @@ impl WebsocketServerClient {
                     }
                 }
                 maybe_close_connection_event = close_connection_event_subscriber.recv() => {
-                    if let Some(close_connection_event) = maybe_close_connection_event {
-                        match close_connection_event {
-                            WebsocketServerCloseConnectionEvent::Graceful => {
-                                info!("Server-client {} received termination signal", id);
-                                ws_sender.send(tungstenite::Message::Close(None)).await.unwrap();
-                                break;
-                            }
-                            WebsocketServerCloseConnectionEvent::Forceful => {
-                                info!("Server-client {} received forceful termination signal", id);
-                                break;
-                            }
-                        }
+                    if maybe_close_connection_event.is_some() {
+                        info!("Server-client {} received termination signal", id);
+                        ws_sender.send(tungstenite::Message::Close(None)).await.unwrap();
+                        break;
                     }
                 }
                 maybe_message = outbound_message_subscriber.recv() => {
                     if let Some(message) = maybe_message {
                         info!("Server-client {} sending message: {}", id, message);
-                        ws_sender.send(tungstenite::Message::Text(message)).await.unwrap();
+                        ws_sender.send(tungstenite::Message::Text(message.into())).await.unwrap();
                     }
                 }
             }
@@ -169,10 +158,10 @@ impl WebsocketServerClient {
 
     pub(super) fn terminate(&mut self) {
         self.close_connection_event_publisher
-            .send(WebsocketServerCloseConnectionEvent::Graceful)
+            .send(WebsocketServerCloseConnectionEvent)
             .unwrap_or_else(move |err| {
                 self.send_event(WebsocketServerInboundEvent::Error(
-                    WebsocketServerError::ClientTerminationError(self.id, err.to_string()),
+                    WebsocketServerError::ClientTermination(self.id, err.to_string()),
                 ));
             });
     }
@@ -182,7 +171,7 @@ impl WebsocketServerClient {
             .send(data)
             .unwrap_or_else(move |err| {
                 self.send_event(WebsocketServerInboundEvent::Error(
-                    WebsocketServerError::SendMessageError(self.id, err.to_string()),
+                    WebsocketServerError::SendMessage(self.id, err.to_string()),
                 ));
             });
     }

@@ -15,7 +15,7 @@ lazy_static! {
     pub static ref ASYNC_RUNTIME: Runtime = Runtime::new().expect("Failed to create async runtime");
 }
 
-#[nvim_oxi::module]
+#[nvim_oxi::plugin]
 fn websocket_ffi() -> nvim_oxi::Result<Dictionary> {
     let file_appender = FileAppender::builder()
         // Pattern: https://docs.rs/log4rs/*/log4rs/encode/pattern/index.html
