@@ -1,16 +1,18 @@
-use std::collections::HashMap;
-use std::error::Error;
-use std::sync::Arc;
-
-use futures_util::{SinkExt, StreamExt, TryFutureExt};
-use mlua::prelude::{LuaFunction, LuaTable};
-use nvim_oxi::libuv::AsyncHandle;
-use nvim_oxi::{mlua::lua, schedule};
+use futures_util::{SinkExt, StreamExt};
+use nvim_oxi::{
+    libuv::AsyncHandle,
+    mlua::{
+        lua,
+        prelude::{LuaFunction, LuaTable},
+    },
+    schedule,
+};
+use std::{collections::HashMap, error::Error};
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 use url::Url;
 use uuid::Uuid;
 
-use log::{debug, error, info, warn};
+use log::{debug, error, info};
 use tokio_tungstenite::tungstenite::{self};
 
 mod ffi;
@@ -23,17 +25,13 @@ use registry::WEBSOCKET_CLIENT_REGISTRY;
 pub use super::ASYNC_RUNTIME;
 pub use ffi::websocket_client_ffi;
 
-use tokio::task::JoinHandle;
-
 struct WebsocketClient {
     id: Uuid,
     connect_addr: Url,
-    extra_headers: HashMap<String, String>,
     close_connection_event_publisher: UnboundedSender<WebsocketClientCloseConnectionEvent>,
     outbound_message_publisher: UnboundedSender<String>,
     inbound_event_publisher: UnboundedSender<WebsocketClientInboundEvent>,
     lua_handle: AsyncHandle,
-    task_handle: JoinHandle<()>,
 }
 
 async fn start_client(
@@ -65,7 +63,7 @@ async fn start_client(
                 "{}:{}",
                 connect_addr
                     .host_str()
-                    .ok_or(WebsocketClientError::ConnectionError(
+                    .ok_or(WebsocketClientError::Connection(
                         "Host is not set".to_string()
                     ))?,
                 connect_addr.port().unwrap_or_else(|| {
@@ -83,7 +81,7 @@ async fn start_client(
         .header("Sec-WebSocket-Version", 13)
         .uri(connect_addr.as_str())
         .body(())
-        .map_err(|err| WebsocketClientError::ConnectionError(err.to_string()))?;
+        .map_err(|err| WebsocketClientError::Connection(err.to_string()))?;
 
     for (key, value) in extra_headers.clone() {
         debug!("Adding header: {}={}", key, value);
@@ -99,7 +97,7 @@ async fn start_client(
 
     let (ws_stream, _response) = tokio_tungstenite::connect_async(request)
         .await
-        .map_err(|err| WebsocketClientError::ConnectionError(err.to_string()))?;
+        .map_err(|err| WebsocketClientError::Connection(err.to_string()))?;
     info!("{} WebSocket handshake completed", connect_addr.as_str());
     send_event(WebsocketClientInboundEvent::Connected);
 
@@ -114,9 +112,9 @@ async fn start_client(
                             if message.is_text() {
                                 let data = message.into_text().expect("Message received from server is not valid string");
                                 info!("Received message: {}", data);
-                                send_event(WebsocketClientInboundEvent::NewMessage(data));
+                                send_event(WebsocketClientInboundEvent::NewMessage(data.to_string()));
                             } else if message.is_binary() {
-                                send_event(WebsocketClientInboundEvent::Error(WebsocketClientError::ReceiveMessageError("Binary data is not supported".to_string())));
+                                send_event(WebsocketClientInboundEvent::Error(WebsocketClientError::ReceiveMessage("Binary data is not supported".to_string())));
                                 error!("Binary data is not supported");
                             } else if message.is_close() {
                                 info!("Received close frame from server");
@@ -124,34 +122,24 @@ async fn start_client(
                             }
                         }
                         Err(err) => {
-                            send_event(WebsocketClientInboundEvent::Error(WebsocketClientError::ReceiveMessageError(err.to_string())));
+                            send_event(WebsocketClientInboundEvent::Error(WebsocketClientError::ReceiveMessage(err.to_string())));
                             error!("Failed to receive message: {}", err);
                         }
                     }
                 }
             }
             close_event = close_connection_event_subscriber.recv() => {
-                if let Some(close_event) = close_event {
-                    match close_event {
-                        WebsocketClientCloseConnectionEvent::Graceful => {
-                            if let Err(err) = ws_sender.send(tungstenite::Message::Close(None)).await {
-                                send_event(WebsocketClientInboundEvent::Error(WebsocketClientError::ConnectionError(err.to_string())));
-                                error!("Failed to send close message: {}", err);
-                            }
-                        }
-                        WebsocketClientCloseConnectionEvent::Forceful => {
-                            warn!("Forcefully closing WebSocket connection");
-                            break
-                        }
-                    }
+                if close_event.is_some() &&
+                    let Err(err) = ws_sender.send(tungstenite::Message::Close(None)).await {
+                        send_event(WebsocketClientInboundEvent::Error(WebsocketClientError::Connection(err.to_string())));
+                        error!("Failed to send close message: {}", err);
                 }
             }
             message = outbound_message_receiver.recv() => {
-                if let Some(message) = message {
-                    if let Err(err) = ws_sender.send(tungstenite::Message::Text(message)).await {
-                        send_event(WebsocketClientInboundEvent::Error(WebsocketClientError::ConnectionError(err.to_string())));
+                if let Some(message) = message &&
+                    let Err(err) = ws_sender.send(tungstenite::Message::Text(message.into())).await {
+                        send_event(WebsocketClientInboundEvent::Error(WebsocketClientError::Connection(err.to_string())));
                         error!("Failed to forward message to websocket: {}", err);
-                    }
                 }
             }
         }
@@ -190,38 +178,37 @@ impl WebsocketClient {
             schedule(move |_| {
                 match event {
                     WebsocketClientInboundEvent::Connected => {
-                        if let Some(on_connect) = callbacks.on_connect.clone() {
-                            on_connect.call::<_, ()>(id.to_string())?;
+                        if let Some(ref on_connect) = callbacks.on_connect {
+                            on_connect.call::<()>(id.to_string())?;
                         }
                     }
                     WebsocketClientInboundEvent::Disconnected => {
-                        if let Some(on_disconnect) = callbacks.on_disconnect {
-                            on_disconnect.call::<_, ()>(id.to_string())?;
+                        if let Some(ref on_disconnect) = callbacks.on_disconnect {
+                            on_disconnect.call::<()>(id.to_string())?;
                         }
                     }
                     WebsocketClientInboundEvent::NewMessage(message) => {
-                        if let Some(on_message) = callbacks.on_message.clone() {
-                            on_message.call::<_, ()>((id.to_string(), message))?;
+                        if let Some(ref on_message) = callbacks.on_message {
+                            on_message.call::<()>((id.to_string(), message))?;
                         }
                     }
                     WebsocketClientInboundEvent::Error(error) => {
-                        if let Some(on_error) = callbacks.on_error.clone() {
-                            on_error.call::<_, ()>((id.to_string(), error))?;
+                        if let Some(ref on_error) = callbacks.on_error {
+                            on_error.call::<()>((id.to_string(), error))?;
                         }
                     }
                 }
-                Ok(())
+                Ok::<(), nvim_oxi::Error>(())
             });
             Ok::<_, nvim_oxi::Error>(())
         })?;
 
         let connect_addr_clone = connect_addr.clone();
-        let extra_headers_clone = extra_headers.clone();
+        let extra_headers_clone = extra_headers;
         let inbound_event_publisher_clone = inbound_event_publisher.clone();
         let lua_handle_clone = lua_handle.clone();
 
-        // REFACTOR: convert type to a MapErr<JoinHandle<Result<(), WebsocketClientError>>>? So that we don't need to duplicate the error handling logic
-        let handle: JoinHandle<()> = ASYNC_RUNTIME.spawn(async move {
+        let _handle = ASYNC_RUNTIME.spawn(async move {
             if let Err(err) = start_client(
                 &connect_addr_clone,
                 &extra_headers_clone,
@@ -243,16 +230,13 @@ impl WebsocketClient {
             WEBSOCKET_CLIENT_REGISTRY.lock().remove(&id);
         });
 
-        // Store the handle in the WebsocketClient struct
         Ok(Self {
             id,
             connect_addr,
-            extra_headers,
             close_connection_event_publisher,
             outbound_message_publisher,
             inbound_event_publisher,
             lua_handle,
-            task_handle: handle, // Add this field to the struct
         })
     }
 
@@ -267,10 +251,10 @@ impl WebsocketClient {
 
     fn disconnect(&mut self) {
         self.close_connection_event_publisher
-            .send(WebsocketClientCloseConnectionEvent::Graceful)
+            .send(WebsocketClientCloseConnectionEvent)
             .unwrap_or_else(move |err| {
                 self.send_event(WebsocketClientInboundEvent::Error(
-                    WebsocketClientError::SendMessageError(err.to_string()),
+                    WebsocketClientError::SendMessage(err.to_string()),
                 ));
             });
     }
@@ -280,24 +264,21 @@ impl WebsocketClient {
             .send(data)
             .unwrap_or_else(move |err| {
                 self.send_event(WebsocketClientInboundEvent::Error(
-                    WebsocketClientError::SendMessageError(err.to_string()),
+                    WebsocketClientError::SendMessage(err.to_string()),
                 ));
             });
     }
 }
 
 #[derive(Clone, Debug)]
-pub enum WebsocketClientCloseConnectionEvent {
-    Graceful,
-    Forceful,
-}
+pub struct WebsocketClientCloseConnectionEvent;
 
 #[derive(Clone)]
 struct WebsocketClientCallbacks {
-    on_message: Option<Arc<LuaFunction<'static>>>,
-    on_disconnect: Option<Arc<LuaFunction<'static>>>,
-    on_connect: Option<Arc<LuaFunction<'static>>>,
-    on_error: Option<Arc<LuaFunction<'static>>>,
+    on_message: Option<LuaFunction>,
+    on_disconnect: Option<LuaFunction>,
+    on_connect: Option<LuaFunction>,
+    on_error: Option<LuaFunction>,
 }
 
 impl WebsocketClientCallbacks {
@@ -305,24 +286,16 @@ impl WebsocketClientCallbacks {
         let lua = lua();
         let callbacks = lua
             .globals()
-            .get::<_, LuaTable>("_WEBSOCKET_NVIM")?
-            .get::<_, LuaTable>("clients")?
-            .get::<_, LuaTable>("callbacks")?
-            .get::<_, LuaTable>(client_id.to_string())?;
+            .get::<LuaTable>("_WEBSOCKET_NVIM")?
+            .get::<LuaTable>("clients")?
+            .get::<LuaTable>("callbacks")?
+            .get::<LuaTable>(client_id.to_string())?;
 
         Ok(Self {
-            on_message: callbacks
-                .get::<_, Option<LuaFunction>>("on_message")?
-                .map(Arc::new),
-            on_disconnect: callbacks
-                .get::<_, Option<LuaFunction>>("on_disconnect")?
-                .map(Arc::new),
-            on_connect: callbacks
-                .get::<_, Option<LuaFunction>>("on_connect")?
-                .map(Arc::new),
-            on_error: callbacks
-                .get::<_, Option<LuaFunction>>("on_error")?
-                .map(Arc::new),
+            on_message: callbacks.get::<Option<LuaFunction>>("on_message")?,
+            on_disconnect: callbacks.get::<Option<LuaFunction>>("on_disconnect")?,
+            on_connect: callbacks.get::<Option<LuaFunction>>("on_connect")?,
+            on_error: callbacks.get::<Option<LuaFunction>>("on_error")?,
         })
     }
 }

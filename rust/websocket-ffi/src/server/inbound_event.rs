@@ -1,16 +1,17 @@
-use mlua::prelude::{IntoLua, Lua, LuaResult, LuaValue};
-use nvim_oxi::Object;
-use nvim_oxi::conversion::ToObject;
+use nvim_oxi::{
+    Object,
+    conversion::ToObject,
+    mlua::{IntoLua, Lua, Result as LuaResult, Value as LuaValue},
+};
 use uuid::Uuid;
 
 #[derive(Clone)]
 pub enum WebsocketServerError {
-    ClientConnectionError(String),
-    ClientTerminationError(Uuid, String),
-    ServerTerminationError(String),
-    ReceiveMessageError(Uuid, String),
-    SendMessageError(Uuid, String),
-    BroadcastMessageError(String),
+    ClientTermination(Uuid, String),
+    ServerTermination(String),
+    ReceiveMessage(Uuid, String),
+    SendMessage(Uuid, String),
+    BroadcastMessage(String),
 }
 
 #[derive(Clone)]
@@ -25,59 +26,48 @@ pub enum WebsocketServerInboundEvent {
 impl ToObject for WebsocketServerError {
     fn to_object(self) -> Result<Object, nvim_oxi::conversion::Error> {
         match self {
-            WebsocketServerError::ClientConnectionError(message) => Ok(Object::from(message)),
-            WebsocketServerError::ClientTerminationError(_client_id, message) => {
+            WebsocketServerError::ClientTermination(_client_id, message) => {
                 Ok(Object::from(message))
             }
-            WebsocketServerError::ReceiveMessageError(_client_id, message) => {
-                Ok(Object::from(message))
-            }
-            WebsocketServerError::SendMessageError(_client_id, message) => {
-                Ok(Object::from(message))
-            }
-            WebsocketServerError::BroadcastMessageError(message) => Ok(Object::from(message)),
-            WebsocketServerError::ServerTerminationError(message) => Ok(Object::from(message)),
+            WebsocketServerError::ReceiveMessage(_client_id, message) => Ok(Object::from(message)),
+            WebsocketServerError::SendMessage(_client_id, message) => Ok(Object::from(message)),
+            WebsocketServerError::BroadcastMessage(message) => Ok(Object::from(message)),
+            WebsocketServerError::ServerTermination(message) => Ok(Object::from(message)),
         }
     }
 }
 
-impl<'lua> IntoLua<'lua> for WebsocketServerError {
-    fn into_lua(self, lua: &'lua Lua) -> LuaResult<LuaValue<'lua>> {
+impl IntoLua for WebsocketServerError {
+    fn into_lua(self, lua: &Lua) -> LuaResult<LuaValue> {
         let vec = match self {
-            WebsocketServerError::ClientConnectionError(message) => {
+            WebsocketServerError::ClientTermination(client_id, message) => {
                 vec![
-                    ("type", "client_connection_error"),
-                    ("message", message.leak()),
-                ]
-            }
-            WebsocketServerError::ClientTerminationError(client_id, message) => {
-                vec![
-                    ("type", "client_temrination_error"),
+                    ("type", "client_termination_error"),
                     ("client_id", client_id.to_string().leak()),
                     ("message", message.leak()),
                 ]
             }
-            WebsocketServerError::ReceiveMessageError(client_id, message) => {
+            WebsocketServerError::ReceiveMessage(client_id, message) => {
                 vec![
                     ("type", "receive_message_error"),
                     ("client_id", client_id.to_string().leak()),
                     ("message", message.leak()),
                 ]
             }
-            WebsocketServerError::SendMessageError(client_id, message) => {
+            WebsocketServerError::SendMessage(client_id, message) => {
                 vec![
                     ("type", "send_message_error"),
                     ("client_id", client_id.to_string().leak()),
                     ("message", message.leak()),
                 ]
             }
-            WebsocketServerError::BroadcastMessageError(message) => {
+            WebsocketServerError::BroadcastMessage(message) => {
                 vec![
                     ("type", "broadcast_message_error"),
                     ("message", message.leak()),
                 ]
             }
-            WebsocketServerError::ServerTerminationError(message) => {
+            WebsocketServerError::ServerTermination(message) => {
                 vec![
                     ("type", "server_termination_error"),
                     ("message", message.leak()),

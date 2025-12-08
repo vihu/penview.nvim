@@ -349,14 +349,14 @@ mod tests {
 
         // The directory of the current file is the parent directory of the file
         // So this should return true
-        assert_eq!(is_child_path(current_file, file), true);
+        assert!(is_child_path(current_file, file));
 
         let current_file: PathBuf = PathBuf::from("/home/user/Notes/slipbox/");
         let file: PathBuf = PathBuf::from("/home/user/Notes/not_child.md");
 
         // The directory of the current file is the parent directory of the file
         // So this should return true
-        assert_ne!(is_child_path(current_file, file), true);
+        assert!(!is_child_path(current_file, file));
     }
 
     #[test]

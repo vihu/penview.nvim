@@ -9,27 +9,36 @@ pub fn websocket_server_ffi() -> Dictionary {
     Dictionary::from_iter([
         (
             "start",
-            Object::from(Function::from_fn(create_and_start_server)),
+            Object::from(Function::<_, ()>::from_fn(create_and_start_server)),
         ),
-        ("terminate", Object::from(Function::from_fn(terminate))),
+        (
+            "terminate",
+            Object::from(Function::<_, ()>::from_fn(terminate)),
+        ),
         (
             "send_data_to_client",
-            Object::from(Function::from_fn(send_data_to_client)),
+            Object::from(Function::<_, ()>::from_fn(send_data_to_client)),
         ),
         (
             "check_replay_messages",
-            Object::from(Function::from_fn(check_replay_messages)),
+            Object::from(Function::<_, Vec<String>>::from_fn(check_replay_messages)),
         ),
         (
             "broadcast_data",
-            Object::from(Function::from_fn(broadcast_data)),
+            Object::from(Function::<_, ()>::from_fn(broadcast_data)),
         ),
         (
             "terminate_client",
-            Object::from(Function::from_fn(terminate_client)),
+            Object::from(Function::<_, ()>::from_fn(terminate_client)),
         ),
-        ("get_servers", Object::from(Function::from_fn(get_servers))),
-        ("get_clients", Object::from(Function::from_fn(get_clients))),
+        (
+            "get_servers",
+            Object::from(Function::<_, Dictionary>::from_fn(get_servers)),
+        ),
+        (
+            "get_clients",
+            Object::from(Function::<_, Dictionary>::from_fn(get_clients)),
+        ),
     ])
 }
 

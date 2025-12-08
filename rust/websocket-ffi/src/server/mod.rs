@@ -1,16 +1,19 @@
-use std::collections::HashMap;
-use std::error::Error;
-use std::sync::Arc;
-
-use mlua::prelude::{LuaFunction, LuaTable};
-use nvim_oxi::libuv::AsyncHandle;
-use nvim_oxi::{mlua::lua, schedule};
-use parking_lot::Mutex;
-use tokio::net::TcpListener;
-use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
-use uuid::Uuid;
-
 use log::info;
+use nvim_oxi::{
+    libuv::AsyncHandle,
+    mlua::{
+        lua,
+        prelude::{LuaFunction, LuaTable},
+    },
+    schedule,
+};
+use parking_lot::Mutex;
+use std::{collections::HashMap, error::Error, sync::Arc};
+use tokio::{
+    net::TcpListener,
+    sync::mpsc::{self, UnboundedReceiver, UnboundedSender},
+};
+use uuid::Uuid;
 
 mod client;
 mod ffi;
@@ -59,20 +62,13 @@ async fn start_server(
                 tokio::spawn(WebsocketServerClient::run(stream, addr, inbound_event_publisher.clone(), lua_handle.clone(), extra_response_headers.clone(), message_replay_buffer.clone(), clients.clone()));
             }
             maybe_close_connection_event = close_connection_event_subscriber.recv() => {
-                if let Some(close_connection_event) = maybe_close_connection_event {
-                    match close_connection_event {
-                        WebsocketServerCloseConnectionEvent::Graceful => {
-                            info!("Server received termination signal. Propagating to server clients");
-                            for client in clients.lock().values() {
-                                let mut client = client.lock();
-                                client.terminate();
-                            }
-                            break;
-                        }
-                        WebsocketServerCloseConnectionEvent::Forceful => {
-                            break;
-                        }
+                if maybe_close_connection_event.is_some() {
+                    info!("Server received termination signal. Propagating to server clients");
+                    for client in clients.lock().values() {
+                        let mut client = client.lock();
+                        client.terminate();
                     }
+                    break;
                 }
             }
             maybe_message = outbound_broadcast_message_receiver.recv() => {
@@ -117,17 +113,17 @@ impl WebsocketServer {
                 match event {
                     WebsocketServerInboundEvent::ClientConnected(client_id) => {
                         if let Some(on_connect) = callbacks_clone.on_client_connect {
-                            on_connect.call::<_, ()>((id.to_string(), client_id.to_string()))?;
+                            on_connect.call::<()>((id.to_string(), client_id.to_string()))?;
                         }
                     }
                     WebsocketServerInboundEvent::ClientDisconnected(client_id) => {
                         if let Some(on_disconnect) = callbacks_clone.on_client_disconnect {
-                            on_disconnect.call::<_, ()>((id.to_string(), client_id.to_string()))?;
+                            on_disconnect.call::<()>((id.to_string(), client_id.to_string()))?;
                         }
                     }
                     WebsocketServerInboundEvent::NewMessage(client_id, message) => {
                         if let Some(on_message) = callbacks_clone.on_message {
-                            on_message.call::<_, ()>((
+                            on_message.call::<()>((
                                 id.to_string(),
                                 client_id.to_string(),
                                 message,
@@ -136,11 +132,11 @@ impl WebsocketServer {
                     }
                     WebsocketServerInboundEvent::Error(error) => {
                         if let Some(on_error) = callbacks_clone.on_error {
-                            on_error.call::<_, ()>((id.to_string(), error))?;
+                            on_error.call::<()>((id.to_string(), error))?;
                         }
                     }
                 }
-                Ok(())
+                Ok::<(), nvim_oxi::Error>(())
             });
             Ok::<_, nvim_oxi::Error>(())
         })?;
@@ -191,10 +187,10 @@ impl WebsocketServer {
 
     fn terminate(&self) {
         self.close_connection_event_publisher
-            .send(WebsocketServerCloseConnectionEvent::Graceful)
+            .send(WebsocketServerCloseConnectionEvent)
             .unwrap_or_else(move |err| {
                 self.send_event(WebsocketServerInboundEvent::Error(
-                    WebsocketServerError::ServerTerminationError(err.to_string()),
+                    WebsocketServerError::ServerTermination(err.to_string()),
                 ));
             });
     }
@@ -221,42 +217,38 @@ impl WebsocketServer {
             .send(data)
             .unwrap_or_else(|err| {
                 self.send_event(WebsocketServerInboundEvent::Error(
-                    WebsocketServerError::BroadcastMessageError(err.to_string()),
+                    WebsocketServerError::BroadcastMessage(err.to_string()),
                 ));
             });
     }
 }
 
 #[derive(Clone)]
-struct WebsocketServerCallbacks<'a> {
-    on_message: Option<LuaFunction<'a>>,
-    on_client_disconnect: Option<LuaFunction<'a>>,
-    on_client_connect: Option<LuaFunction<'a>>,
-    on_error: Option<LuaFunction<'a>>,
+struct WebsocketServerCallbacks {
+    on_message: Option<LuaFunction>,
+    on_client_disconnect: Option<LuaFunction>,
+    on_client_connect: Option<LuaFunction>,
+    on_error: Option<LuaFunction>,
 }
 
-impl<'a> WebsocketServerCallbacks<'a> {
+impl WebsocketServerCallbacks {
     fn new(server_id: Uuid) -> Result<Self, Box<dyn Error>> {
         let lua = lua();
         let callbacks = lua
             .globals()
-            .get::<_, LuaTable>("_WEBSOCKET_NVIM")?
-            .get::<_, LuaTable>("servers")?
-            .get::<_, LuaTable>("callbacks")?
-            .get::<_, LuaTable>(server_id.to_string())?;
+            .get::<LuaTable>("_WEBSOCKET_NVIM")?
+            .get::<LuaTable>("servers")?
+            .get::<LuaTable>("callbacks")?
+            .get::<LuaTable>(server_id.to_string())?;
 
         Ok(Self {
-            on_message: callbacks.get::<_, Option<LuaFunction>>("on_message")?,
-            on_client_disconnect: callbacks
-                .get::<_, Option<LuaFunction>>("on_client_disconnect")?,
-            on_client_connect: callbacks.get::<_, Option<LuaFunction>>("on_client_connect")?,
-            on_error: callbacks.get::<_, Option<LuaFunction>>("on_error")?,
+            on_message: callbacks.get::<Option<LuaFunction>>("on_message")?,
+            on_client_disconnect: callbacks.get::<Option<LuaFunction>>("on_client_disconnect")?,
+            on_client_connect: callbacks.get::<Option<LuaFunction>>("on_client_connect")?,
+            on_error: callbacks.get::<Option<LuaFunction>>("on_error")?,
         })
     }
 }
 
 #[derive(Clone, Debug)]
-pub enum WebsocketServerCloseConnectionEvent {
-    Graceful,
-    Forceful,
-}
+pub struct WebsocketServerCloseConnectionEvent;

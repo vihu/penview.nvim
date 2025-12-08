@@ -1,20 +1,26 @@
-use std::collections::HashMap;
-
+use super::{WEBSOCKET_CLIENT_REGISTRY, WebsocketClient};
 use nvim_oxi::{Dictionary, Function, Object};
+use std::collections::HashMap;
 use uuid::Uuid;
-
-use super::WEBSOCKET_CLIENT_REGISTRY;
-use super::WebsocketClient;
 
 pub fn websocket_client_ffi() -> Dictionary {
     Dictionary::from_iter([
         (
             "connect",
-            Object::from(Function::from_fn(create_client_and_connect)),
+            Object::from(Function::<_, ()>::from_fn(create_client_and_connect)),
         ),
-        ("disconnect", Object::from(Function::from_fn(disconnect))),
-        ("send_data", Object::from(Function::from_fn(send_data))),
-        ("get_clients", Object::from(Function::from_fn(get_clients))),
+        (
+            "disconnect",
+            Object::from(Function::<_, ()>::from_fn(disconnect)),
+        ),
+        (
+            "send_data",
+            Object::from(Function::<_, ()>::from_fn(send_data)),
+        ),
+        (
+            "get_clients",
+            Object::from(Function::<_, Dictionary>::from_fn(get_clients)),
+        ),
     ])
 }
 
