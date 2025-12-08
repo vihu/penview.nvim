@@ -35,11 +35,7 @@ jobs:
             target: aarch64-unknown-linux-gnu
             artifact_name: linux-aarch64
             ffi_ext: so
-          - os: macos-13
-            target: x86_64-apple-darwin
-            artifact_name: macos-x86_64
-            ffi_ext: dylib
-          - os: macos-14
+          - os: macos-15
             target: aarch64-apple-darwin
             artifact_name: macos-aarch64
             ffi_ext: dylib

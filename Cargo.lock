@@ -1302,7 +1302,7 @@ checksum = "df94ce210e5bc13cb6651479fa48d14f601d9858cfe0467f43ae157023b938d3"
 
 [[package]]
 name = "penview"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "askama",
@@ -2155,7 +2155,7 @@ dependencies = [
 
 [[package]]
 name = "websocket-ffi"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "futures-channel",
  "futures-util",
