@@ -1,5 +1,8 @@
 # penview.nvim
 
+![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/vihu/penview.nvim/rust.yml)
+![GitHub Release](https://img.shields.io/github/v/release/vihu/penview.nvim)
+
 Real-time Markdown preview for Neovim with GitHub Flavored Markdown styling.
 
 ## Features
