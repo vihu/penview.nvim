@@ -16,16 +16,21 @@ Real-time Markdown preview for Neovim with GitHub Flavored Markdown styling.
 ## Requirements
 
 - Neovim 0.9+
-- Rust toolchain (for building)
+- curl (for downloading pre-compiled binaries)
+- Rust toolchain (only if building from source)
 
 ## Installation
 
-### lazy.nvim
+### lazy.nvim (recommended)
+
+Pre-compiled binaries are automatically downloaded for Linux and macOS (x86_64 and aarch64):
 
 ```lua
 {
   "vihu/penview.nvim",
-  build = "make build",
+  build = function()
+    require("penview.build").install()
+  end,
   ft = "markdown",
   config = function()
     require("penview").setup({
@@ -42,6 +47,51 @@ Real-time Markdown preview for Neovim with GitHub Flavored Markdown styling.
   },
 }
 ```
+
+### packer.nvim
+
+```lua
+use {
+  "vihu/penview.nvim",
+  run = function()
+    require("penview.build").install()
+  end,
+  config = function()
+    require("penview").setup({
+      browser = "firefox",
+    })
+  end,
+}
+```
+
+### vim-plug
+
+```vim
+Plug 'vihu/penview.nvim', { 'do': ':lua require("penview.build").install()' }
+
+" In your init.vim or after/plugin:
+lua require("penview").setup({ browser = "firefox" })
+```
+
+### Building from source
+
+If pre-compiled binaries are unavailable for your platform, or you prefer to build from source:
+
+```lua
+-- lazy.nvim
+{
+  "vihu/penview.nvim",
+  build = "make build",  -- Requires Rust toolchain
+  -- ...
+}
+```
+
+Build dependencies:
+
+- Rust toolchain (stable)
+- libluajit (libluajit-5.1-dev on Debian/Ubuntu)
+- libclang-dev
+- pkg-config
 
 ## Usage
 

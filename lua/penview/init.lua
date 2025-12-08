@@ -15,10 +15,19 @@ end
 -- Get the path to the penview binary
 local function get_binary_path()
 	local root = get_plugin_root()
-	local binary = root .. "/target/release/penview"
-	if vim.fn.executable(binary) == 1 then
-		return binary
+
+	-- Check pre-compiled binary first
+	local precompiled = root .. "/bin/penview"
+	if vim.fn.executable(precompiled) == 1 then
+		return precompiled
 	end
+
+	-- Check source-built binary
+	local source_built = root .. "/target/release/penview"
+	if vim.fn.executable(source_built) == 1 then
+		return source_built
+	end
+
 	-- Fallback to PATH
 	if vim.fn.executable("penview") == 1 then
 		return "penview"
