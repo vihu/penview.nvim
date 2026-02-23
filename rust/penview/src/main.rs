@@ -6,7 +6,7 @@ mod svg_template;
 
 use std::path::PathBuf;
 
-use clap::{Parser, command};
+use clap::Parser;
 use inquire::Confirm;
 use render::render_doc;
 use routes::construct_router;
