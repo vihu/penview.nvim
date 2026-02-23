@@ -5,6 +5,10 @@
 
 Real-time Markdown preview for Neovim with GitHub Flavored Markdown styling.
 
+## Demo
+
+[penview-demo.webm](https://github.com/user-attachments/assets/bea9d0ef-fc68-4080-acd4-40f77335754d)
+
 ## Features
 
 - Live preview updates as you type (no save required)
