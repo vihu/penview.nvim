@@ -46,6 +46,7 @@ Pre-compiled binaries are automatically downloaded for Linux and macOS (x86_64 a
       -- port = 0,              -- Optional: server port (default: random)
       -- debug = false,         -- Optional: enable debug logging
       -- sync_scroll = true,    -- Optional: sync scroll with nvim (default: true)
+      -- theme = "light/dark",  -- Optional: set theme (default: dark)
     })
   end,
   keys = {

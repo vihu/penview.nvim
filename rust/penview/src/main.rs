@@ -42,6 +42,10 @@ enum Args {
         /// Only used when --open is also provided.
         #[arg(short, long)]
         browser: Option<String>,
+
+        /// Initial theme for the preview page ("light" or "dark").
+        #[arg(short = 't', long, default_value_t = ("light").to_string())]
+        theme: String,
     },
     Render {
         /// The location of the Markdown file to render.
@@ -65,12 +69,13 @@ async fn main() {
             address,
             open,
             browser,
+            theme,
         } => {
             if !quiet {
                 tracing_subscriber::fmt::init();
             }
 
-            let state = state::AppState::new();
+            let state = state::AppState::new(theme);
             let app = construct_router(state);
 
             let listener = tokio::net::TcpListener::bind((address, port))
@@ -101,7 +106,7 @@ async fn main() {
             mut in_file,
             out_file,
         } => {
-            let html = render_doc(&in_file, false)
+            let html = render_doc(&in_file, false, "light")
                 .await
                 .expect("Failed to render document.");
 

@@ -6,4 +6,5 @@ pub struct PageTemplate {
     pub title: String,
     pub body: String,
     pub use_websocket: bool,
+    pub theme: String,
 }

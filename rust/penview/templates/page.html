@@ -1,11 +1,11 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" {% if theme == "dark" %}data-theme="dark"{% endif %}>
 
 <head>
   <meta charset="utf-8">
   <title>{{ title }}</title>
-  <link id="theme-light" rel="stylesheet" href="https://cdn.jsdelivr.net/npm/github-markdown-css/github-markdown-light.css">
-  <link id="theme-dark" rel="stylesheet" href="https://cdn.jsdelivr.net/npm/github-markdown-css/github-markdown-dark.css" disabled>
+  <link id="theme-light" rel="stylesheet" href="https://cdn.jsdelivr.net/npm/github-markdown-css/github-markdown-light.css" {% if theme == "dark" %}disabled{% endif %}>
+  <link id="theme-dark" rel="stylesheet" href="https://cdn.jsdelivr.net/npm/github-markdown-css/github-markdown-dark.css" {% if theme != "dark" %}disabled{% endif %}>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.10/dist/katex.min.css"
     integrity="sha384-wcIxkf4k558AjM3Yz3BBFQUbk/zgIYC2R0QpeeYb+TwlBVMrlgLqwRjRtGZiK7ww" crossorigin="anonymous">
   <script src="https://code.jquery.com/jquery-3.7.1.slim.min.js" crossorigin="anonymous"></script>
@@ -246,8 +246,8 @@
         window.mermaidRender?.();
       }
 
-      // Load saved preference or default to light
-      const saved = localStorage.getItem('penview-theme') || 'light';
+      // Load saved preference or use server-configured default
+      const saved = localStorage.getItem('penview-theme') || '{{ theme }}';
       setTheme(saved);
 
       toggle.addEventListener('click', function() {
