@@ -46,6 +46,7 @@ M.server_job = nil
 M.debug = false
 M.sync_scroll = true
 M.headless = false
+M.theme = "dark"
 
 function M.setup(opts)
 	opts = opts or {}
@@ -54,6 +55,13 @@ function M.setup(opts)
 	M.port = opts.port or 0
 	M.debug = opts.debug or false
 	M.sync_scroll = opts.sync_scroll ~= false -- default true
+
+	if opts.theme then
+		if opts.theme ~= "light" and opts.theme ~= "dark" then
+			error('[penview] \'theme\' must be "light" or "dark", got: ' .. tostring(opts.theme))
+		end
+		M.theme = opts.theme
+	end
 
 	if M.headless then
 		-- Headless mode requires a port
@@ -111,10 +119,22 @@ function M.start()
 	local cmd
 	if M.headless then
 		-- Headless mode: bind to 0.0.0.0, no browser open
-		cmd = { binary, "serve", "-q", "-p", tostring(M.port), "-a", "0.0.0.0" }
+		cmd = { binary, "serve", "-q", "-p", tostring(M.port), "-a", "0.0.0.0", "--theme", M.theme }
 	else
 		-- Normal mode: --open tells server to launch browser with file path
-		cmd = { binary, "serve", "-q", "-p", tostring(M.port), "--open", path, "--browser", M.browser }
+		cmd = {
+			binary,
+			"serve",
+			"-q",
+			"-p",
+			tostring(M.port),
+			"--open",
+			path,
+			"--browser",
+			M.browser,
+			"--theme",
+			M.theme,
+		}
 	end
 
 	log("Command: " .. table.concat(cmd, " "))

@@ -8,12 +8,14 @@ use tokio::sync::{Mutex, broadcast};
 #[derive(Clone)]
 pub struct AppState {
     pub channels: Arc<Mutex<HashMap<PathBuf, broadcast::Sender<String>>>>,
+    pub theme: String,
 }
 
 impl AppState {
-    pub fn new() -> Self {
+    pub fn new(theme: String) -> Self {
         Self {
             channels: Arc::new(Mutex::new(HashMap::new())),
+            theme,
         }
     }
 
