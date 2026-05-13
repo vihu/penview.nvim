@@ -69,7 +69,16 @@ fn browser_launch_command(url: &str, browser: &str) -> LaunchCommand {
 
 #[cfg(all(unix, not(target_os = "macos")))]
 fn browser_launch_command(url: &str, browser: &str) -> LaunchCommand {
-    let (program, mut args) = split_browser_command(browser);
+    browser_launch_command_with_path_exists(url, browser, |candidate| Path::new(candidate).exists())
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+fn browser_launch_command_with_path_exists(
+    url: &str,
+    browser: &str,
+    path_exists: impl Fn(&str) -> bool,
+) -> LaunchCommand {
+    let (program, mut args) = split_browser_command(browser, path_exists);
 
     if supports_new_tab_flag(&program, &args) && !has_explicit_window_or_tab_arg(&args) {
         args.push("--new-tab".to_string());
@@ -88,11 +97,89 @@ fn browser_launch_command(url: &str, browser: &str) -> LaunchCommand {
 }
 
 #[cfg(all(unix, not(target_os = "macos")))]
-fn split_browser_command(browser: &str) -> (String, Vec<String>) {
-    let mut parts = browser.split_whitespace();
-    let program = parts.next().unwrap_or(browser).to_string();
-    let args = parts.map(ToString::to_string).collect();
+fn split_browser_command(
+    browser: &str,
+    path_exists: impl Fn(&str) -> bool,
+) -> (String, Vec<String>) {
+    let browser = browser.trim();
+
+    if path_exists(browser) {
+        return (browser.to_string(), Vec::new());
+    }
+
+    // Browser values often come from editor config rather than a shell. Preserve an unquoted
+    // executable path containing spaces when it exists, e.g. WSL paths like:
+    // /mnt/c/Program Files/Zen Browser/zen.exe
+    if let Some((program, rest)) = split_existing_program_prefix(browser, &path_exists) {
+        return (program.to_string(), split_command_words(rest));
+    }
+
+    let mut parts = split_command_words(browser).into_iter();
+    let program = parts.next().unwrap_or_else(|| browser.to_string());
+    let args = parts.collect();
     (program, args)
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+fn split_existing_program_prefix(
+    browser: &str,
+    path_exists: impl Fn(&str) -> bool,
+) -> Option<(&str, &str)> {
+    let mut longest_match = None;
+
+    for (idx, ch) in browser.char_indices() {
+        if !ch.is_whitespace() {
+            continue;
+        }
+
+        let candidate = browser[..idx].trim_end();
+        if candidate.is_empty() || !path_exists(candidate) {
+            continue;
+        }
+
+        longest_match = Some((candidate, browser[idx..].trim_start()));
+    }
+
+    longest_match
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+fn split_command_words(input: &str) -> Vec<String> {
+    let mut words = Vec::new();
+    let mut current = String::new();
+    let mut quote = None;
+    let mut escaped = false;
+
+    for ch in input.chars() {
+        if escaped {
+            current.push(ch);
+            escaped = false;
+            continue;
+        }
+
+        match quote {
+            Some(quote_char) if ch == quote_char => quote = None,
+            Some(_) => current.push(ch),
+            None if ch == '\\' => escaped = true,
+            None if ch == '\'' || ch == '"' => quote = Some(ch),
+            None if ch.is_whitespace() => {
+                if !current.is_empty() {
+                    words.push(std::mem::take(&mut current));
+                }
+            }
+            None => current.push(ch),
+        }
+    }
+
+    if escaped {
+        current.push('\\');
+    }
+
+    if !current.is_empty() {
+        words.push(current);
+    }
+
+    words
 }
 
 #[cfg(all(unix, not(target_os = "macos")))]
@@ -115,6 +202,8 @@ fn supports_new_tab_flag(program: &str, args: &[String]) -> bool {
         "waterfox",
         "iceweasel",
         "zen-browser",
+        "zen.exe",
+        "zen_browser",
         "chromium",
         "google-chrome",
         "chrome",
@@ -179,6 +268,43 @@ mod tests {
                 args: vec![
                     "-P".to_string(),
                     "work".to_string(),
+                    "--new-tab".to_string(),
+                    URL.to_string()
+                ],
+            }
+        );
+    }
+
+    #[cfg(all(unix, not(target_os = "macos")))]
+    #[test]
+    fn wsl_windows_browser_path_with_spaces_is_preserved() {
+        let browser = "/mnt/c/Program Files/Zen Browser/zen.exe";
+
+        assert_eq!(
+            browser_launch_command_with_path_exists(URL, browser, |candidate| candidate == browser),
+            LaunchCommand {
+                program: browser.to_string(),
+                args: vec!["--new-tab".to_string(), URL.to_string()],
+            }
+        );
+    }
+
+    #[cfg(all(unix, not(target_os = "macos")))]
+    #[test]
+    fn wsl_windows_browser_path_with_spaces_preserves_extra_args() {
+        let browser = "/mnt/c/Program Files/Zen Browser/zen.exe";
+
+        assert_eq!(
+            browser_launch_command_with_path_exists(
+                URL,
+                &format!("{browser} --profile default"),
+                |candidate| candidate == browser,
+            ),
+            LaunchCommand {
+                program: browser.to_string(),
+                args: vec![
+                    "--profile".to_string(),
+                    "default".to_string(),
                     "--new-tab".to_string(),
                     URL.to_string()
                 ],
