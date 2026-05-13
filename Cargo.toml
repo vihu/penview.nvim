@@ -6,7 +6,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.2.1"
+version = "0.2.2"
 edition = "2024"
 authors = ["Rahul Garg <rg@vihu.dev>"]
 readme = "README.md"
@@ -16,7 +16,7 @@ homepage = "https://github.com/vihu/penview.nvim"
 
 [workspace.dependencies]
 anyhow = "1"
-askama = "0.15"
+askama = "0.16"
 axum = { version = "0.8", features = ["ws"] }
 base64 = "0.22.0"
 clap = { version = "4", features = ["derive"] }
