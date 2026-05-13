@@ -1,3 +1,4 @@
+mod browser;
 mod page_template;
 mod render;
 mod routes;
@@ -82,21 +83,23 @@ async fn main() {
                 .await
                 .unwrap();
 
+            let local_addr = listener.local_addr().unwrap();
+
             if quiet {
-                println!("{}", listener.local_addr().unwrap());
+                println!("{local_addr}");
             } else {
-                info!("Listening on {}", listener.local_addr().unwrap());
+                info!("Listening on {local_addr}");
             }
 
             if let Some(path) = open {
-                let url = format!(
-                    "http://{}?path={}",
-                    listener.local_addr().unwrap(),
-                    path.as_os_str().to_str().unwrap()
-                );
-                match browser {
-                    Some(browser) => open::with(&url, &browser).unwrap(),
-                    None => open::that(&url).unwrap(),
+                let mut url = url::Url::parse(&format!("http://{local_addr}"))
+                    .expect("listener address should form a valid preview URL");
+                url.query_pairs_mut()
+                    .append_pair("path", &path.to_string_lossy());
+                let url = url.to_string();
+
+                if let Err(err) = crate::browser::open_url(&url, browser.as_deref()) {
+                    eprintln!("Failed to open browser: {err:#}");
                 }
             }
 
