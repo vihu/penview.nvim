@@ -3,7 +3,10 @@ use askama::Template;
 use base64::{Engine, engine::general_purpose};
 use pulldown_cmark::{CodeBlockKind, CowStr, Event, LinkType, Tag, TagEnd};
 use resolve_path::PathResolveExt;
-use std::path::{Path, PathBuf};
+use std::{
+    collections::HashSet,
+    path::{Path, PathBuf},
+};
 use url::Url;
 
 use tokio::fs::{read, read_to_string};
@@ -78,6 +81,8 @@ async fn render_markdown_to_html(content: &str, base_path: &Path) -> String {
     let parser = pulldown_cmark::Parser::new_ext(content, options);
     let mut events: Vec<_> = parser.collect();
 
+    add_heading_ids(&mut events);
+
     // Track mermaid code block state
     let mut in_mermaid_block = false;
 
@@ -126,8 +131,8 @@ async fn render_markdown_to_html(content: &str, base_path: &Path) -> String {
             ..
         }) = event
         {
-            // If the link is a valid URL, leave it
-            if dest_url.parse::<Url>().is_err() {
+            // If the link is a valid URL or same-document fragment, leave it
+            if !dest_url.starts_with('#') && dest_url.parse::<Url>().is_err() {
                 // Otherwise, try to parse it as a file path
                 let file_path: PathBuf = dest_url.parse().unwrap();
                 // If it's a filepath check if it's relative
@@ -155,6 +160,67 @@ async fn render_markdown_to_html(content: &str, base_path: &Path) -> String {
     let mut body = String::new();
     pulldown_cmark::html::push_html(&mut body, events.into_iter());
     body
+}
+
+fn add_heading_ids(events: &mut [Event<'_>]) {
+    let mut used_ids: HashSet<String> = events
+        .iter()
+        .filter_map(|event| match event {
+            Event::Start(Tag::Heading { id: Some(id), .. }) => Some(id.to_string()),
+            _ => None,
+        })
+        .collect();
+    let mut headings = Vec::new();
+    let mut current_heading = None;
+
+    for (index, event) in events.iter().enumerate() {
+        match event {
+            Event::Start(Tag::Heading { id: None, .. }) => {
+                current_heading = Some((index, String::new()));
+            }
+            Event::Text(text) | Event::Code(text) => {
+                if let Some((_, heading_text)) = &mut current_heading {
+                    heading_text.push_str(text);
+                }
+            }
+            Event::End(TagEnd::Heading(_)) => {
+                if let Some(heading) = current_heading.take() {
+                    headings.push(heading);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    for (index, heading_text) in headings {
+        let base_id = heading_slug(&heading_text);
+        let mut id = base_id.clone();
+        let mut suffix = 1;
+
+        while !used_ids.insert(id.clone()) {
+            id = format!("{base_id}-{suffix}");
+            suffix += 1;
+        }
+
+        if let Event::Start(Tag::Heading { id: heading_id, .. }) = &mut events[index] {
+            *heading_id = Some(id.into());
+        }
+    }
+}
+
+fn heading_slug(text: &str) -> String {
+    text.chars()
+        .filter_map(|character| {
+            if character.is_alphanumeric() || matches!(character, '-' | '_') {
+                Some(character)
+            } else if character == ' ' {
+                Some('-')
+            } else {
+                None
+            }
+        })
+        .flat_map(char::to_lowercase)
+        .collect()
 }
 
 /// Returns a relative path to a file if it is under the working directory
@@ -309,6 +375,41 @@ fn is_child_path(parent_dir: PathBuf, child: PathBuf) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn preserves_fragment_links_and_generates_heading_ids() {
+        let html = render_content("[Demo](#demo)\n\n## Demo", Path::new("README.md"))
+            .await
+            .unwrap();
+
+        assert!(html.contains("href=\"#demo\""));
+        assert!(html.contains("<h2 id=\"demo\">Demo</h2>"));
+        assert!(!html.contains("/?path=#demo"));
+    }
+
+    #[tokio::test]
+    async fn generates_github_style_heading_ids() {
+        let html = render_content(
+            "## *Step* `1`: déjà-vu_name!\n\n## Foo\n\n## Foo\n\n## Foo-1",
+            Path::new("README.md"),
+        )
+        .await
+        .unwrap();
+
+        assert!(html.contains("<h2 id=\"step-1-déjà-vu_name\">"));
+        assert!(html.contains("<h2 id=\"foo\">Foo</h2>"));
+        assert!(html.contains("<h2 id=\"foo-1\">Foo</h2>"));
+        assert!(html.contains("<h2 id=\"foo-1-1\">Foo-1</h2>"));
+    }
+
+    #[tokio::test]
+    async fn preserves_explicit_heading_ids() {
+        let html = render_content("## Custom {#kept}", Path::new("README.md"))
+            .await
+            .unwrap();
+
+        assert!(html.contains("<h2 id=\"kept\">Custom</h2>"));
+    }
 
     #[test]
     fn test_rel_to_abspath() {
