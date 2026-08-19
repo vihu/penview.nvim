@@ -81,6 +81,28 @@ Plug 'vihu/penview.nvim', { 'do': ':lua require("penview.build").install()' }
 lua require("penview").setup({ browser = "firefox" })
 ```
 
+### vim.pack (Neovim 0.12+)
+
+`vim.pack` fires `PackChanged` _before_ it runs `:packadd`, so the plugin is on disk
+but not yet on `runtimepath`. Append the path before requiring the build module,
+otherwise `require` fails and the binaries are never downloaded:
+
+```lua
+vim.api.nvim_create_autocmd("PackChanged", {
+  callback = function(ev)
+    local d = ev.data
+    if d.spec.name ~= "penview.nvim" then return end
+    if d.kind ~= "install" and d.kind ~= "update" then return end
+    vim.opt.runtimepath:append(d.path)
+    require("penview.build").install()
+  end,
+})
+
+vim.pack.add { { src = "https://github.com/vihu/penview.nvim" } }
+```
+
+Register the autocommand before calling `vim.pack.add` so it fires on first install.
+
 ### Building from source
 
 If pre-compiled binaries are unavailable for your platform, or you prefer to build from source:
