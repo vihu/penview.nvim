@@ -166,7 +166,8 @@ end
 function M.binaries_exist()
 	local root = get_plugin_root()
 	local binary = root .. "/bin/penview"
-	local ffi = root .. "/bin/websocket_ffi.so"
+	-- Check bin/lua/, the path require() actually loads, not the extracted bin/
+	local ffi = root .. "/bin/lua/websocket_ffi.so"
 	return vim.fn.filereadable(binary) == 1 and vim.fn.filereadable(ffi) == 1
 end
 
@@ -353,6 +354,10 @@ function M.install(opts)
 	local ffi_lua_dir = bin_dir .. "/lua"
 	vim.fn.mkdir(ffi_lua_dir, "p")
 	vim.fn.system({ "cp", ffi_src, ffi_lua_dir .. "/websocket_ffi.so" })
+	if vim.v.shell_error ~= 0 then
+		print("[penview] [ERROR] Failed to copy websocket_ffi.so into bin/lua/")
+		return false
+	end
 
 	print("[penview] [OK] Installation complete (" .. version .. ")")
 	return true
