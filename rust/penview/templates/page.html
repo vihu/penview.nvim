@@ -88,7 +88,8 @@
     console.log(`Created websocket connection to listen for changes to ${path}.`);
     {% endif %}
   </script>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/default.min.css">
+  <link id="highlight-light" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/default.min.css" {% if theme == "dark" %}disabled{% endif %}>
+  <link id="highlight-dark" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" {% if theme != "dark" %}disabled{% endif %}>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
   <script>hljs.highlightAll();</script>
   <style>
@@ -229,16 +230,22 @@
       const icon = document.getElementById('theme-icon');
       const lightCSS = document.getElementById('theme-light');
       const darkCSS = document.getElementById('theme-dark');
+      const highlightLightCSS = document.getElementById('highlight-light');
+      const highlightDarkCSS = document.getElementById('highlight-dark');
 
       function setTheme(theme) {
         if (theme === 'dark') {
           lightCSS.disabled = true;
           darkCSS.disabled = false;
+          highlightLightCSS.disabled = true;
+          highlightDarkCSS.disabled = false;
           document.documentElement.setAttribute('data-theme', 'dark');
           icon.innerHTML = '&#9788;'; // Sun
         } else {
           lightCSS.disabled = false;
           darkCSS.disabled = true;
+          highlightLightCSS.disabled = false;
+          highlightDarkCSS.disabled = true;
           document.documentElement.removeAttribute('data-theme');
           icon.innerHTML = '&#9790;'; // Moon
         }
